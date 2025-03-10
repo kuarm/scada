@@ -5,6 +5,7 @@ import streamlit as st
 file_path = "ava.xlsx"  # เปลี่ยนเป็น path ของไฟล์คุณ
 df = pd.read_excel(file_path)
 
+event = ["", "", "", "", "", ""]
 # คู่ Message ที่ต้องการจับคู่
 message_pairs = [
     ("Remote unit state changed from Initializing to Online.", "Remote unit state changed from Connecting to Initializing."),
@@ -37,7 +38,7 @@ for start_msg, end_msg in message_pairs:
 
         if not next_event.empty:
             end_row = next_event.iloc[0]
-            duration = (end_row["Field change time"] - start_row["Field change time"]).total_seconds()
+            duration = (end_row["Field change time"] - start_row["Field change time"]).total_seconds() / (60 * 60)
             results.append({
                 "Start Message": start_msg,
                 "End Message": end_msg,
