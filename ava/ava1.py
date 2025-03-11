@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-event = ["Remote unit state changed from Initializing to Online.","Remote unit state changed from Connecting to Initializing."]
+event = ["Remote unit state changed from Initializing to Online.",
+         "Remote unit state changed from Connecting to Initializing."]
 
 def main():
     # 2. สร้าง UI ให้ผู้ใช้สามารถอัปโหลดไฟล์ Excel

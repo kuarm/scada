@@ -5,14 +5,19 @@ import streamlit as st
 file_path = "ava.xlsx"  # เปลี่ยนเป็น path ของไฟล์คุณ
 df = pd.read_excel(file_path)
 
-event = ["", "", "", "", "", ""]
+#event = ["", "", "", "", "", ""]
 # คู่ Message ที่ต้องการจับคู่
 message_pairs = [
-    ("Remote unit state changed from Initializing to Online.", "Remote unit state changed from Connecting to Initializing."),
-    ("Remote unit state changed from Connecting to Initializing.", "Remote unit state changed from Online to Connecting."),
-    ("Remote unit state changed from Initializing to Online.", "Remote unit state changed from Online to Connecting."),
-    ("Remote unit state changed from Connecting to Initializing.", "Remote unit state changed from Telemetry Failure to Connecting."),
-    ("Remote unit state changed from Telemetry Failure to Connecting.", "Remote unit state changed from Online to Telemetry Failure.")
+    ("Remote unit state changed from Online to Telemetry Failure.", "Remote unit state changed from Telemetry Failure to Online."),
+    ("Remote unit state changed from Online to Telemetry Failure.", "Remote unit state changed from Telemetry Failure to Connecting."),
+    ("Remote unit state changed from Online to Telemetry Failure.", "Remote unit state changed from Telemetry Failure to Offline."),
+    ("Remote unit state changed from Online to Telemetry Failure.", "Remote unit state changed from Telemetry Failure to Initializing."),
+    ("Remote unit state changed from Online to Connecting.", "Remote unit state changed from Connecting to Initializing."),
+    ("Remote unit state changed from Online to Connecting.", "Remote unit state changed from Connecting to Offline."),
+    ("Remote unit state changed from Online to Initializing.", "Remote unit state changed from Initializing to Connecting."),
+    ("Remote unit state changed from Online to Initializing.", "Remote unit state changed from Initializing to Online."),
+    ("Remote unit state changed from Online to Initializing.", "Remote unit state changed from Initializing to Offline."),
+    ("Remote unit state changed from Online to Offline.", "Remote unit state changed from Offline to Connecting.")
 ]
 
 # แปลงคอลัมน์ Field change time เป็น datetime
