@@ -4,8 +4,7 @@ from fuzzywuzzy import process
 
 # โหลดข้อมูล
 file_path = "ava_test.xlsx"  # เปลี่ยนเป็น path ของไฟล์คุณ
-df = pd.read_excel(file_path, sheet_name="Sheet4",header=0)
-st.write(df)
+df = pd.read_excel(file_path, sheet_name="Sheet5",header=0)
 
 event = ["Remote unit state changed from Online to Telemetry Failure.",
          "Remote unit state changed from Online to Connecting.",
@@ -92,7 +91,7 @@ df_filtered = df_filtered.sort_values("Field change time")
 
 # คำนวณ Duration
 df_filtered["Duration (second)"] = df_filtered.groupby(["Previous State", "Next State"])["Field change time"].diff().dt.total_seconds()
-
+st.write(df_filtered)
 # ลบค่า NaN ที่เกิดจาก diff()
 df_filtered = df_filtered.dropna(subset=["Duration (second)"])
 
@@ -110,7 +109,7 @@ st.write("🔹 Summary of Total Duration for Each State Transition:")
 st.write(df_duration_summary)
 
 # แสดงผลลัพธ์
-st.write(df_filtered[(result_col)])
+#st.write(df_filtered[(result_col)])
 
 df_duration_summary = df_duration_summary.sort_values("Duration (minutes)", ascending=False)
 st.bar_chart(df_duration_summary, x="Previous State", y="Duration (minutes)")
