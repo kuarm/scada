@@ -3,24 +3,21 @@ import streamlit as st
 import pandas as pd
 
 # โหลดข้อมูลจากไฟล์
-df = pd.read_excel("ava_test.xlsx", sheet_name="Sheet5")
-
+df = pd.read_excel("ava_test.xlsx", sheet_name="Sheet1")
+st.write(df)
 # แปลง "Field change time" เป็น datetime
 df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %H:%M:%S.%f")
 
-# Sort data by time
-df = df.sort_values("Field change time").reset_index(drop=True)
-
-# ฟังก์ชันดึงค่า Previous State และ New State จากข้อความ Message
+# ฟังก์ชันดึงค่า Previous State และ New State จากข้อความ Message และลบจุดออกจาก New State
 def extract_states(message):
     match = re.search(r"Remote unit state changed from (.+?) to (.+)", str(message))
-    return match.groups() if match else (None, None)
+    if match:
+        prev_state, new_state = match.groups()
+        return prev_state, new_state.strip(".")  # ลบจุดท้ายข้อความ
+    return None, None
 
 # ใช้ฟังก์ชัน extract_states กับคอลัมน์ Message
 df[["Previous State", "New State"]] = df["Message"].apply(lambda x: pd.Series(extract_states(x)))
-
-# ลบจุดท้ายของค่าในคอลัมน์ "New State"
-df["New State"] = df["New State"].str.rstrip(".")
 
 # คำนวณเวลาสิ้นสุดของแต่ละสถานะ (Next Change Time)
 df["Next Change Time"] = df["Field change time"].shift(-1)
@@ -68,39 +65,55 @@ df["Adjusted End"] = df["Next Change Time"].clip(lower=start_time, upper=end_tim
 df["Adjusted Duration (seconds)"] = (df["Adjusted End"] - df["Adjusted Start"]).dt.total_seconds()
 
 # ลบแถวที่มีค่า NaN ในคอลัมน์ Adjusted Duration
-df_cleaned = df.dropna(subset=["Adjusted Duration (seconds)"])
+df_filtered = df.dropna(subset=["Adjusted Duration (seconds)"])
 
 # กรองเฉพาะข้อมูลที่อยู่ในช่วง start_time และ end_time
-df_filtered = df_cleaned[
-    (df_cleaned["Adjusted Start"] >= start_time) & (df_cleaned["Adjusted End"] <= end_time)
+df_filtered = df_filtered[
+    (df_filtered["Adjusted Start"] >= start_time) & (df_filtered["Adjusted End"] <= end_time)
 ]
 
 # ใส่ค่า start_time และ end_time ในทุกแถวของ df_filtered
 df_filtered["Start Time Filter"] = start_time
 df_filtered["End Time Filter"] = end_time
 
-# ✅ **แปลงวินาทีเป็น วัน, ชั่วโมง, นาที, วินาที แยกเป็นคอลัมน์**
+# ฟังก์ชันแปลงวินาทีให้เป็นรูปแบบวัน ชั่วโมง นาที วินาที
+def format_duration(seconds):
+    days = seconds // (24 * 3600)
+    hours = (seconds % (24 * 3600)) // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
+
+    parts = []
+    if days > 0:
+        parts.append(f"{days} วัน")
+    if hours > 0:
+        parts.append(f"{hours} ชั่วโมง")
+    if minutes > 0:
+        parts.append(f"{minutes} นาที")
+    if seconds > 0:
+        parts.append(f"{seconds} วินาที")
+
+    return " ".join(parts) if parts else "0 วินาที"
+
+# คำนวณค่าแยกเป็นคอลัมน์
 df_filtered["Days"] = df_filtered["Adjusted Duration (seconds)"] // (24 * 3600)
 df_filtered["Hours"] = (df_filtered["Adjusted Duration (seconds)"] % (24 * 3600)) // 3600
 df_filtered["Minutes"] = (df_filtered["Adjusted Duration (seconds)"] % 3600) // 60
 df_filtered["Seconds"] = df_filtered["Adjusted Duration (seconds)"] % 60
 
-# ✅ สรุปเวลาที่แต่ละ State อยู่รวมกันทั้งหมด
-state_duration_summary = df_filtered.groupby("Previous State")["Adjusted Duration (seconds)"].sum().reset_index()
-state_duration_summary.rename(columns={"Previous State": "State", "Adjusted Duration (seconds)": "Total Duration (seconds)"}, inplace=True)
+# ใช้ฟังก์ชัน format_duration สำหรับคอลัมน์ข้อความ
+df_filtered["Formatted Duration"] = df_filtered["Adjusted Duration (seconds)"].apply(format_duration)
 
-# แปลงเวลาให้อยู่ในรูปแบบ วัน ชั่วโมง นาที วินาที
-state_duration_summary["Days"] = state_duration_summary["Total Duration (seconds)"] // (24 * 3600)
-state_duration_summary["Hours"] = (state_duration_summary["Total Duration (seconds)"] % (24 * 3600)) // 3600
-state_duration_summary["Minutes"] = (state_duration_summary["Total Duration (seconds)"] % 3600) // 60
-state_duration_summary["Seconds"] = state_duration_summary["Total Duration (seconds)"] % 60
-
-# ✅ ลบคอลัมน์ "Total Duration (seconds)" ออกจากตารางสุดท้าย
-state_duration_summary = state_duration_summary.drop(columns=["Total Duration (seconds)"])
+# ✅ **สรุปเวลารวมของแต่ละ State**
+state_duration_summary = df_filtered.groupby("Previous State")[["Formatted Duration"]].sum().reset_index()
+state_duration_summary.rename(columns={"Previous State": "State"}, inplace=True)
 
 # ✅ **แสดงผลลัพธ์ใน Streamlit**
 st.write(f"### State Durations from {start_time} to {end_time}")
-st.dataframe(df_filtered[["Previous State", "New State", "Adjusted Start", "Adjusted End", "Days", "Hours", "Minutes", "Seconds"]])
+st.dataframe(df_filtered[[
+    "Previous State", "New State", "Adjusted Start", "Adjusted End", "Days", "Hours", 
+    "Minutes", "Seconds", "Formatted Duration"
+    ]])
 
 st.write("### Summary of Total Duration for Each State")
 st.dataframe(state_duration_summary)

@@ -79,24 +79,46 @@ df_filtered = df_cleaned[
 df_filtered["Start Time Filter"] = start_time
 df_filtered["End Time Filter"] = end_time
 
-# ✅ **แปลงวินาทีเป็น วัน, ชั่วโมง, นาที, วินาที แยกเป็นคอลัมน์**
-df_filtered["Days"] = df_filtered["Adjusted Duration (seconds)"] // (24 * 3600)
-df_filtered["Hours"] = (df_filtered["Adjusted Duration (seconds)"] % (24 * 3600)) // 3600
-df_filtered["Minutes"] = (df_filtered["Adjusted Duration (seconds)"] % 3600) // 60
-df_filtered["Seconds"] = df_filtered["Adjusted Duration (seconds)"] % 60
+"""
+# ✅ **แปลงวินาทีเป็น วัน, ชั่วโมง, นาที, วินาที**
+def format_duration(seconds):
+    days = seconds // (24 * 3600)
+    hours = (seconds % (24 * 3600)) // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
 
-# ✅ สรุปเวลาที่แต่ละ State อยู่รวมกันทั้งหมด
-state_duration_summary = df_filtered.groupby("Previous State")["Adjusted Duration (seconds)"].sum().reset_index()
-state_duration_summary.rename(columns={"Previous State": "State", "Adjusted Duration (seconds)": "Total Duration (seconds)"}, inplace=True)
+    duration_parts = []
+    if days > 0:
+        duration_parts.append(f"{int(days)} วัน")
+    if hours > 0:
+        duration_parts.append(f"{int(hours)} ชั่วโมง")
+    if minutes > 0:
+        duration_parts.append(f"{int(minutes)} นาที")
+    if seconds > 0:
+        duration_parts.append(f"{int(seconds)} วินาที")
+    return " ".join(duration_parts)
+"""
+
+# ✅ **แปลงวินาทีเป็น วัน, ชั่วโมง, นาที, วินาที และแยกเป็นคอลัมน์**
+def split_duration(seconds):
+    days = seconds // (24 * 3600)
+    hours = (seconds % (24 * 3600)) // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
+    return pd.Series([int(days), int(hours), int(minutes), int(seconds)])
+
+#df_filtered["Formatted Duration"] = df_filtered["Adjusted Duration (seconds)"].apply(format_duration)
+df_filtered[["Days", "Hours", "Minutes", "Seconds"]] = df_filtered["Adjusted Duration (seconds)"].apply(split_duration)
+
+# ✅ **สรุปเวลารวมของแต่ละ State**
+state_duration_summary = df_filtered.groupby("Previous State")[["Days", "Hours", "Minutes", "Seconds"]].sum().reset_index()
+state_duration_summary.rename(columns={"Previous State": "State"}, inplace=True)
 
 # แปลงเวลาให้อยู่ในรูปแบบ วัน ชั่วโมง นาที วินาที
-state_duration_summary["Days"] = state_duration_summary["Total Duration (seconds)"] // (24 * 3600)
-state_duration_summary["Hours"] = (state_duration_summary["Total Duration (seconds)"] % (24 * 3600)) // 3600
-state_duration_summary["Minutes"] = (state_duration_summary["Total Duration (seconds)"] % 3600) // 60
-state_duration_summary["Seconds"] = state_duration_summary["Total Duration (seconds)"] % 60
+#state_duration_summary["Formatted Total Duration"] = state_duration_summary["Total Duration (seconds)"].apply(format_duration)
 
 # ✅ ลบคอลัมน์ "Total Duration (seconds)" ออกจากตารางสุดท้าย
-state_duration_summary = state_duration_summary.drop(columns=["Total Duration (seconds)"])
+#state_duration_summary = state_duration_summary.drop(columns=["Total Duration (seconds)"])
 
 # ✅ **แสดงผลลัพธ์ใน Streamlit**
 st.write(f"### State Durations from {start_time} to {end_time}")
