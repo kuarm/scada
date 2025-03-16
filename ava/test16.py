@@ -13,6 +13,9 @@ df = df.sort_values("Field change time").reset_index(drop=True)
 
 # ฟังก์ชันดึงค่า Previous State และ New State และลบจุดท้ายข้อความ
 def extract_states(message):
+    # ตรวจสอบว่าข้อความเป็น "Remote Unit is now in expected state (Online)."
+    if "Remote Unit is now in expected state (Online)." in str(message):
+        return (None, None)  # ถ้าข้อความเป็นแบบนี้ ไม่ต้องคำนวณค่า
     match = re.search(r"Remote unit state changed from (.+?) to (.+)", str(message))
     return (match.group(1), match.group(2).strip(".")) if match else (None, None)
 
