@@ -1,6 +1,9 @@
 import re
 import streamlit as st
 import pandas as pd
+import numpy as np
+import plotly.express as px
+import datetime
 
 # โหลดข้อมูลจากไฟล์
 df = pd.read_excel("EventSummary_Jan2025.xlsx", sheet_name="EventSummary_Jan2025",header=7)
@@ -44,10 +47,16 @@ else:
 st.sidebar.header("เลือกช่วงเวลา")
 # ดึงวันที่และเวลาปัจจุบัน
 now = pd.Timestamp.now()
-start_date = st.sidebar.date_input("เลือกวันที่เริ่มต้น", value=pd.to_datetime("2025-01-01"), key="start_date")
-start_time = st.sidebar.time_input("เลือกเวลาที่เริ่มต้น", value=pd.to_datetime("00:00:00").time(), key="start_time")
+
+# เลือกวันที่ เวลา
+start_date = st.sidebar.date_input("เลือกวันที่เริ่มต้น", value=datetime.date(2025, 1, 1), key="start_date")
+start_time = st.sidebar.time_input("เลือกเวลาที่เริ่มต้น", value=datetime.time(0, 0, 0), key="start_time")
 end_date = st.sidebar.date_input("เลือกวันที่สิ้นสุด", value=now.date(), key="end_date")
-end_time = st.sidebar.time_input("เลือกเวลาที่สิ้นสุด", value=now.time(), key="end_time")
+end_time = st.sidebar.time_input("เลือกเวลาที่สิ้นสุด", value=datetime.time(0, 0, 0), key="end_time")
+
+# แสดงค่าที่เลือก
+st.write(f"Start Date: {start_date}, Start Time: {start_time}")
+st.write(f"End Date: {end_date}, End Time: {end_time}")
 
 start_time = pd.Timestamp.combine(start_date, start_time)
 end_time = pd.Timestamp.combine(end_date, end_time)
@@ -236,6 +245,110 @@ merged_df = merged_df.rename(columns={
 # แสดงผล
 st.write("### Availability (%), จำนวนครั้ง, ระยะเวลาของ State ที่ผิดปกติ แยกตาม Device")
 st.dataframe(merged_df)
+
+# ✅ **BarChart**
+# กำหนดช่วงของ Availability (%) เป็นช่วงละ 10%
+bins1 = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+labels1 = [f"{bins1[i]}-{bins1[i+1]}" for i in range(len(bins1)-1)]  # ["0-10", "10-20", ..., "90-100"]
+
+merged_df_copy = merged_df.copy()
+
+# จัดกลุ่มข้อมูล Availability (%) ตามช่วงที่กำหนด
+merged_df_copy["Availability Range"] = pd.cut(
+    merged_df_copy["Availability (%)"], bins=bins1, labels=labels1, right=False
+)
+st.write(merged_df_copy)
+# นับจำนวน Device ในแต่ละช่วง Availability (%)
+availability_counts = merged_df_copy["Availability Range"].value_counts().reindex(labels1, fill_value=0).reset_index()
+availability_counts.columns = ["Availability Range", "Device Count"]
+
+# สร้าง Histogram โดยใช้ px.bar() เพื่อควบคุม bin edges ได้ตรง
+fig = px.bar(
+    availability_counts,
+    x="Availability Range",
+    y="Device Count",
+    title="จำนวน Device ในแต่ละช่วง Availability (%)",
+    labels={"Availability Range": "Availability (%)", "Device Count": "จำนวน Device"},
+    text_auto=True  # แสดงค่าบนแท่งกราฟ
+)
+
+# ปรับแต่งรูปแบบกราฟ
+fig.update_layout(
+    xaxis_title="Availability (%)",
+    yaxis_title="จำนวน Device",
+    title_font_size=20,
+    xaxis_tickangle=-45,  # หมุนตัวอักษรแกน X
+    bargap=0.005
+)
+
+# แสดงกราฟใน Streamlit
+st.plotly_chart(fig)
+
+# ✅ **ประเมิน**
+# กำหนดช่วง Availability (%)
+bins2 = [0, 80, 90, 100]
+labels2 = ["90 < Availability (%) <= 100", "80 < Availability (%) <= 90", "0 <= Availability (%) <= 80"]  # ชื่อช่วงใหม่
+
+merged_df2_copy = merged_df.copy()
+
+# เพิ่มคอลัมน์ "เกณฑ์การประเมิน"
+merged_df2_copy ["เกณฑ์การประเมิน"] = pd.cut(merged_df2_copy ["Availability (%)"], bins=bins2, labels=labels2, right=True)
+
+# กำหนดเงื่อนไขสำหรับผลการประเมิน
+def evaluate_result(row):
+    if row["เกณฑ์การประเมิน"] == "90 < Availability (%) <= 100":
+        return "✅ ไม่แฮงค์"
+    elif row["เกณฑ์การประเมิน"] == "80 < Availability (%) <= 90":
+        return "⚠️ ทรงๆ"
+    else:
+        return "❌ ต้องนอน"
+
+# เพิ่มคอลัมน์ "ผลการประเมิน"
+merged_df2_copy["ผลการประเมิน"] = merged_df2_copy.apply(evaluate_result, axis=1)
+
+# สรุปจำนวน Device ในแต่ละเกณฑ์
+summary_df = merged_df2_copy["ผลการประเมิน"].value_counts().reset_index()
+summary_df.columns = ["ผลการประเมิน", "จำนวน Device"]
+
+# สรุปจำนวน Device ในแต่ละ "เกณฑ์การประเมิน" และ "ผลการประเมิน"
+summary_df = merged_df2_copy.groupby(["เกณฑ์การประเมิน", "ผลการประเมิน"]).size().reset_index(name="จำนวน Device")
+
+# ลบแถวที่ "จำนวน Device" เป็น 0 ออก
+summary_df = summary_df[summary_df["จำนวน Device"] > 0]
+
+# ลบ index ออกจาก summary_df
+summary_df = summary_df.reset_index(drop=True)
+
+# จัดกลุ่มข้อมูล Availability (%) ตามช่วงที่กำหนด
+merged_df2_copy["Availability Range"] = pd.cut(
+    merged_df2_copy["Availability (%)"], bins=bins2, labels=labels2, right=True
+)
+
+# คำนวณจำนวนทั้งหมดของ Device
+total_devices = summary_df["จำนวน Device"].sum()
+
+# คำนวณ % ของแต่ละช่วง
+summary_df["เปอร์เซ็นต์ (%)"] = (summary_df["จำนวน Device"] / total_devices) * 100
+
+# จัดรูปแบบค่าเปอร์เซ็นต์ให้เป็นทศนิยม 2 ตำแหน่ง
+summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].map("{:.2f}%".format)
+
+# แสดง DataFrame พร้อมเปอร์เซ็นต์
+st.write("### จำนวน Device ในแต่ละเกณฑ์การประเมิน")
+st.dataframe(summary_df, use_container_width=True)
+
+# แสดงผลเป็นแผนภูมิแท่ง
+fig = px.bar(
+    summary_df,
+    x="เกณฑ์การประเมิน",
+    y="จำนวน Device",
+    color="ผลการประเมิน",
+    text="จำนวน Device",
+    barmode="group",
+    title="จำนวน Device ตามเกณฑ์การประเมินและผลการประเมิน",
+)
+
+st.plotly_chart(fig)
 
 
 
