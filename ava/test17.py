@@ -7,17 +7,11 @@ import datetime
 
 # โหลดข้อมูลจากไฟล์
 event_summary_path = "EventSummary_Jan2025.xlsx"
-remote_unit_path = "RemoteUnit.xlsx"
 df = pd.read_excel(event_summary_path, sheet_name="EventSummary_Jan2025", skiprows=6)
-df1 = pd.read_excel(remote_unit_path, sheet_name="RemoteUnitReport_Friday, March ", skiprows=4)
 #df = pd.read_excel("ava_test.xlsx", sheet_name="Sheet5")
 #df = df.iloc[7:].reset_index(drop=True) # ลบแถว 1-7
 df= df[['Field change time', 'Message', 'Device', 'Alias']]
 #df = df.drop(columns=["#"])
-
-# รวมข้อมูลเป็นกลุ่มตาม Name
-name_total_duration = df_filtered.groupby("Name")["Adjusted Duration (seconds)"].sum().reset_index()
-name_total_duration.columns = ["Name", "Total Duration (seconds)"]
 
 # แปลง "Field change time" เป็น datetime
 #df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %H:%M:%S.%f")
