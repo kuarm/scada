@@ -7,7 +7,7 @@ import datetime
 
 # โหลดข้อมูลจากไฟล์
 event_summary_path = "EventSummary_Jan2025.xlsx"
-df = pd.read_excel(event_summary_path, sheet_name="EventSummary_Jan2025", skiprows=6)
+df = pd.read_excel(event_summary_path, sheet_name="EventSummary_Jan2025", skiprows=7)
 #df = pd.read_excel("ava_test.xlsx", sheet_name="Sheet5")
 #df = df.iloc[7:].reset_index(drop=True) # ลบแถว 1-7
 df= df[['Field change time', 'Message', 'Device', 'Alias']]
@@ -56,8 +56,8 @@ end_date = st.sidebar.date_input("เลือกวันที่สิ้น�
 end_time = st.sidebar.time_input("เลือกเวลาที่สิ้นสุด", value=datetime.time(0, 0, 0), key="end_time")
 
 # แสดงค่าที่เลือก
-st.write(f"Start Date: {start_date}, Start Time: {start_time}")
-st.write(f"End Date: {end_date}, End Time: {end_time}")
+#st.write(f"Start Date: {start_date}, Start Time: {start_time}")
+#st.write(f"End Date: {end_date}, End Time: {end_time}")
 
 start_time = pd.Timestamp.combine(start_date, start_time)
 end_time = pd.Timestamp.combine(end_date, end_time)
@@ -145,15 +145,12 @@ state_duration_summary.rename(columns={"New State": "State"}, inplace=True)
 #st.write(f"### สรุปเวลารวมของแต่ละ State ของ Device : {selected_device}")
 #st.dataframe(state_duration_summary[["State", "Days", "Hours", "Minutes", "Seconds", "Formatted Duration"]]
 
-
 # ✅ **คำนวณ Availability (%)**
-total_duration = df_filtered["Adjusted Duration (seconds)"].sum()
-
 normal_state = "Online"
-normal_duration = df_filtered[df_filtered["New State"] == normal_state]["Adjusted Duration (seconds)"].sum()
-
 faulty_states = ["Telemetry Failure", "Connecting", "Initializing"]
+normal_duration = df_filtered[df_filtered["New State"] == normal_state]["Adjusted Duration (seconds)"].sum()
 faulty_duration = df_filtered[df_filtered["New State"].isin(faulty_states)]["Adjusted Duration (seconds)"].sum()
+total_duration = df_filtered["Adjusted Duration (seconds)"].sum()
 
 if total_duration > 0:
     availability = (normal_duration / total_duration) * 100
@@ -172,6 +169,7 @@ state_duration_summary["Availability (%)"] = (state_duration_summary["Adjusted D
 #st.write(f"### เวลาที่ทำงานผิดปกติ: {faulty_percentage:.2f}%")
 #st.write("### ค่า Availability (%) ของแต่ละ State")
 #st.dataframe(state_duration_summary[["State", "Days", "Hours", "Minutes", "Seconds", "Formatted Duration", "Availability (%)"]])
+
 
 # ✅ **คำนวณ Availability (%) ของแต่ละ Device**
 # คำนวณเวลารวมของแต่ละ Device
@@ -258,7 +256,7 @@ merged_df_copy = merged_df.copy()
 merged_df_copy["Availability Range"] = pd.cut(
     merged_df_copy["Availability (%)"], bins=bins1, labels=labels1, right=False
 )
-st.write(merged_df_copy)
+
 # นับจำนวน Device ในแต่ละช่วง Availability (%)
 availability_counts = merged_df_copy["Availability Range"].value_counts().reindex(labels1, fill_value=0).reset_index()
 availability_counts.columns = ["Availability Range", "Device Count"]
@@ -283,7 +281,7 @@ fig.update_layout(
 )
 
 # แสดงกราฟใน Streamlit
-st.plotly_chart(fig)
+#st.plotly_chart(fig)
 
 # ✅ **ประเมิน**
 # กำหนดช่วง Availability (%)
@@ -335,8 +333,8 @@ summary_df["เปอร์เซ็นต์ (%)"] = (summary_df["จำนว�
 summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].map("{:.2f}%".format)
 
 # แสดง DataFrame พร้อมเปอร์เซ็นต์
-st.write("### จำนวน Device ในแต่ละเกณฑ์การประเมิน")
-st.dataframe(summary_df, use_container_width=True)
+#st.write("### จำนวน Device ในแต่ละเกณฑ์การประเมิน")
+#st.dataframe(summary_df, use_container_width=True)
 
 # แสดงผลเป็นแผนภูมิแท่ง
 fig = px.bar(
@@ -349,7 +347,35 @@ fig = px.bar(
     title="จำนวน Device ตามเกณฑ์การประเมินและผลการประเมิน",
 )
 
-st.plotly_chart(fig)
+#st.plotly_chart(fig)
+
+# ✅ **โหลดข้อมูล Remote**
+df_remote = pd.read_excel("RemoteUnit.xlsx", sheet_name="RemoteUnitReport_Friday, March ", skiprows=4)
+
+# กรองเฉพาะแถวที่คอลัมน์ "Substation" มีค่า "S1 FRTU"
+df_remote = df_remote[df_remote["Substation"] == "S1 FRTU"]
+
+# เลือกเฉพาะคอลัมน์ที่สนใจ
+columns_to_keep_remote = ["Name", "State", "Failure time", "Success time", "Description"]
+df_remote = df_remote[columns_to_keep_remote]
+
+# เพิ่มคอลัมน์ใหม่และกำหนดค่าเริ่มต้นเป็น 0
+new_columns = [
+    "Availability (%)",
+    "Initializing Count",
+    "Initializing Duration (seconds)",
+    "Telemetry Failure Count",
+    "Telemetry Failure Duration (seconds)",
+    "Connecting Count",
+    "Connecting Duration (seconds)"
+]
+
+for col in new_columns:
+    df_remote[col] = 0  # กำหนดค่าเริ่มต้นเป็น 0 หรือ NaN ตามต้องการ
+
+# ถ้าใช้ใน Streamlit ให้แสดง DataFrame
+st.write("### ข้อมูล RemoteUnit.xlsx พร้อมคอลัมน์ใหม่")
+st.dataframe(df_remote)
 
 
 
