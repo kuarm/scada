@@ -38,22 +38,13 @@ df["Next Change Time"] = df["Field change time"].shift(-1)
 
 # ✅ **กรองข้อมูล Device**
 device_options = ["ทั้งหมด"] + list(df["Device"].unique())
-selected_device = st.sidebar.selectbox("เลือก Device", device_options, index=0)
-if selected_device != "ทั้งหมด":
-    df = df[df["Device"] == selected_device].reset_index(drop=True)
-else:
-    df = df
+
+
     
-# ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
-st.sidebar.header("เลือกช่วงเวลา")
 # ดึงวันที่และเวลาปัจจุบัน
 now = pd.Timestamp.now()
 
-# เลือกวันที่ เวลา
-start_date = st.sidebar.date_input("เลือกวันที่เริ่มต้น", value=datetime.date(2025, 1, 1), key="start_date")
-start_time = st.sidebar.time_input("เลือกเวลาที่เริ่มต้น", value=datetime.time(0, 0, 0), key="start_time")
-end_date = st.sidebar.date_input("เลือกวันที่สิ้นสุด", value=now.date(), key="end_date")
-end_time = st.sidebar.time_input("เลือกเวลาที่สิ้นสุด", value=datetime.time(0, 0, 0), key="end_time")
+
 
 # แสดงค่าที่เลือก
 #st.write(f"Start Date: {start_date}, Start Time: {start_time}")
@@ -193,6 +184,7 @@ device_availability[["Online Days", "Online Hours", "Online Minutes", "Online Se
 device_availability[["Total Days", "Total Hours", "Total Minutes", "Total Seconds"]] = device_availability["Total Duration (seconds)"].apply(
     lambda x: pd.Series(split_duration(x))
 )
+
 # แสดงผลลัพธ์ใน Streamlit
 #st.write("### Availability (%) ของแต่ละ Device")
 #st.dataframe(device_availability[["Device", "Availability (%)", "Online Days", "Online Hours", "Online Minutes", "Online Seconds","Total Days", "Total Hours", "Total Minutes", "Total Seconds"]])
@@ -242,8 +234,8 @@ merged_df = merged_df.rename(columns={
 })
 
 # แสดงผล
-st.write("### Availability (%), จำนวนครั้ง, ระยะเวลาของ State ที่ผิดปกติ แยกตาม Device")
-st.dataframe(merged_df)
+#st.write("### Availability (%), จำนวนครั้ง, ระยะเวลาของ State ที่ผิดปกติ แยกตาม Device")
+#st.dataframe(merged_df)
 
 # ✅ **BarChart**
 # กำหนดช่วงของ Availability (%) เป็นช่วงละ 10%
@@ -349,6 +341,26 @@ fig = px.bar(
 
 #st.plotly_chart(fig)
 
+# ฟังก์ชันคืนค่า DataFrame
+#def get_merged_df():
+#    return merged_df
 
+df_event_ava = merged_df.copy
+
+if __name__ == "__main__":
+    # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
+    st.sidebar.header("เลือกช่วงเวลา")
+
+
+    selected_device = st.sidebar.selectbox("เลือก Device", device_options, index=0)
+    if selected_device != "ทั้งหมด":
+        df = df[df["Device"] == selected_device].reset_index(drop=True)
+    else:
+        df = df
+    # เลือกวันที่ เวลา
+    start_date = st.sidebar.date_input("เลือกวันที่เริ่มต้น", value=datetime.date(2025, 1, 1), key="start_date")
+    start_time = st.sidebar.time_input("เลือกเวลาที่เริ่มต้น", value=datetime.time(0, 0, 0), key="start_time")
+    end_date = st.sidebar.date_input("เลือกวันที่สิ้นสุด", value=now.date(), key="end_date")
+    end_time = st.sidebar.time_input("เลือกเวลาที่สิ้นสุด", value=datetime.time(0, 0, 0), key="end_time")
 
 
