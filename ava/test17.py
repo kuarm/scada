@@ -349,33 +349,6 @@ fig = px.bar(
 
 #st.plotly_chart(fig)
 
-# ✅ **โหลดข้อมูล Remote**
-df_remote = pd.read_excel("RemoteUnit.xlsx", sheet_name="RemoteUnitReport_Friday, March ", skiprows=4)
-
-# กรองเฉพาะแถวที่คอลัมน์ "Substation" มีค่า "S1 FRTU"
-df_remote = df_remote[df_remote["Substation"] == "S1 FRTU"]
-
-# เลือกเฉพาะคอลัมน์ที่สนใจ
-columns_to_keep_remote = ["Name", "State", "Failure time", "Success time", "Description"]
-df_remote = df_remote[columns_to_keep_remote]
-
-# เพิ่มคอลัมน์ใหม่และกำหนดค่าเริ่มต้นเป็น 0
-new_columns = [
-    "Availability (%)",
-    "Initializing Count",
-    "Initializing Duration (seconds)",
-    "Telemetry Failure Count",
-    "Telemetry Failure Duration (seconds)",
-    "Connecting Count",
-    "Connecting Duration (seconds)"
-]
-
-for col in new_columns:
-    df_remote[col] = 0  # กำหนดค่าเริ่มต้นเป็น 0 หรือ NaN ตามต้องการ
-
-# ถ้าใช้ใน Streamlit ให้แสดง DataFrame
-st.write("### ข้อมูล RemoteUnit.xlsx พร้อมคอลัมน์ใหม่")
-st.dataframe(df_remote)
 
 
 

@@ -5,20 +5,15 @@ import numpy as np
 import plotly.express as px
 import datetime
 
-# โหลดไฟล์ Excel
+# ✅ **โหลดข้อมูล Remote**
 df_remote = pd.read_excel("RemoteUnit.xlsx", sheet_name="RemoteUnitReport_Friday, March ", skiprows=4)
-
-df_event = pd.read_excel("EventSummary_Jan2025.xlsx", sheet_name="EventSummary_Jan2025", skiprows=7)
-df_event = df_event.rename(columns={"Device": "Name"})
 
 # กรองเฉพาะแถวที่คอลัมน์ "Substation" มีค่า "S1 FRTU"
 df_remote = df_remote[df_remote["Substation"] == "S1 FRTU"]
 
 # เลือกเฉพาะคอลัมน์ที่สนใจ
 columns_to_keep_remote = ["Name", "State", "Failure time", "Success time", "Description"]
-columns_to_keep_event = ["Field change time", "Message", "Name"]
 df_remote = df_remote[columns_to_keep_remote]
-df_event = df_event[columns_to_keep_event]
 
 # เพิ่มคอลัมน์ใหม่และกำหนดค่าเริ่มต้นเป็น 0
 new_columns = [
@@ -34,12 +29,35 @@ new_columns = [
 for col in new_columns:
     df_remote[col] = 0  # กำหนดค่าเริ่มต้นเป็น 0 หรือ NaN ตามต้องการ
 
-# ✅ รวมข้อมูลเป็น DataFrame เดียวกัน
-#df_combined = pd.concat([df_event, df_remote], ignore_index=True)
-
 # ถ้าใช้ใน Streamlit ให้แสดง DataFrame
 st.write("### ข้อมูล RemoteUnit.xlsx พร้อมคอลัมน์ใหม่")
 st.dataframe(df_remote)
+
+# เลือกเฉพาะคอลัมน์ที่สนใจ
+columns_to_keep_remote = ["Name", "State", "Failure time", "Success time", "Description"]
+columns_to_keep_event = ["Field change time", "Message", "Name"]
+df_remote = df_remote[columns_to_keep_remote]
+
+# ✅ รวมข้อมูลเป็น DataFrame เดียวกัน
+#df_combined = pd.concat([df_event, df_remote], ignore_index=True)
+#df_combined = pd.merge(df_remote, df_event, on="Name", how="left")
+
+# ถ้าใช้ใน Streamlit ให้แสดง DataFrame
+#st.write("### ข้อมูล RemoteUnit.xlsx พร้อมคอลัมน์ใหม่")
+#st.dataframe(df_remote)
+
+def calculate_availability(uptime, total_time):
+    """คำนวณค่า Availability (%) = (เวลาทำงาน / เวลารวม) * 100"""
+    if total_time == 0:
+        return 0
+    return (uptime / total_time) * 100
+
+
+ # คำนวณค่า Availability
+normal_state = "Online"
+uptime = df[df["New State"] == normal_state][time_column].sum()
+total_time = df[time_column].sum()
+availability = calculate_availability(uptime, total_time)
 
 # แปลงคอลัมน์วันที่เป็น datetime
 df_remote["Failure time"] = pd.to_datetime(df_remote["Failure time"])
