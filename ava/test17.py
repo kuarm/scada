@@ -5,19 +5,63 @@ import numpy as np
 import plotly.express as px
 import datetime
 
+def load_data(uploaded_file,rows):
+    #if uploaded_file is not None:
+    df = pd.read_excel(uploaded_file, skiprows=rows)
+    df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
+    #df = df.drop(columns=["#"])
+    return df
+    #return None
+
+def filter_data(df, start_date, end_date, selected_states):
+    df_filtered = df[(df['Field change time'].between(start_date, end_date)) & df['State'].isin(selected_states)]
+    df_filtered['Adjusted Duration (seconds)'] = df_filtered['Duration (seconds)'].fillna(0)
+    df_filtered= df_filtered[['Field change time', 'Message', 'Device', 'Alias']]
+    # Sort data by time
+df = df.sort_values("Field change time").reset_index(drop=True)
+    return df_filtered
+
+def calculate_state_summary(df_filtered):
+    state_duration_summary = df_filtered.groupby("State")["Adjusted Duration (seconds)"].sum().reset_index()
+    total_duration = df_filtered["Adjusted Duration (seconds)"].sum()
+    if total_duration > 0:
+        state_duration_summary["Availability (%)"] = (state_duration_summary["Adjusted Duration (seconds)"] / total_duration) * 100
+    else:
+        state_duration_summary["Availability (%)"] = 0
+    return state_duration_summary
+
 # โหลดข้อมูลจากไฟล์
 event_summary_path = "EventSummary_Jan2025.xlsx"
-df = pd.read_excel(event_summary_path, sheet_name="EventSummary_Jan2025", skiprows=7)
-#df = pd.read_excel("ava_test.xlsx", sheet_name="Sheet5")
-#df = df.iloc[7:].reset_index(drop=True) # ลบแถว 1-7
-df= df[['Field change time', 'Message', 'Device', 'Alias']]
-#df = df.drop(columns=["#"])
+skiprows = 7
+df = load_data(event_summary_path,skiprows)
+    if df is not None:
+        # เลือกวันที่ เวลา
+        start_date = st.sidebar.date_input("Start Date", df['Field change time'].min().date(), key="start_date")
+        end_date = st.sidebar.date_input("End Date", df['Field change time'].max().date(), key="end_date")
+        device_options = ["ทั้งหมด"] + list(df["Device"].unique())
+        selected_states = st.sidebar.multiselect("Select Device", df['Device'].unique(), default=df['Device'].unique())
+        #start_date = st.sidebar.date_input("เลือกวันที่เริ่มต้น", value=datetime.date(2025, 1, 1), key="start_date")
+        #start_time = st.sidebar.time_input("เลือกเวลาที่เริ่มต้น", value=datetime.time(0, 0, 0), key="start_time")
+        #end_date = st.sidebar.date_input("เลือกวันที่สิ้นสุด", value=now.date(), key="end_date")
+        #end_time = st.sidebar.time_input("เลือกเวลาที่สิ้นสุด", value=datetime.time(0, 0, 0), key="end_time")
+        #start_time = pd.Timestamp.combine(start_date, start_time)
+        #end_time = pd.Timestamp.combine(end_date, end_time)
 
-# แปลง "Field change time" เป็น datetime
-#df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %H:%M:%S.%f")
-df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
-# Sort data by time
-df = df.sort_values("Field change time").reset_index(drop=True)
+        df_filtered = filter_data(df, start_date, end_date)
+        
+        selected_device = st.sidebar.multiselect("เลือก Device", device_options, index=0)
+    if selected_device != "ทั้งหมด":
+        df = df[df["Device"] == selected_device].reset_index(drop=True)
+    else:
+        df = df
+
+
+
+
+
+
+
+
 
 # ฟังก์ชันดึงค่า Previous State และ New State และลบจุดท้ายข้อความ
 def extract_states(message):
@@ -44,14 +88,11 @@ device_options = ["ทั้งหมด"] + list(df["Device"].unique())
 # ดึงวันที่และเวลาปัจจุบัน
 now = pd.Timestamp.now()
 
-
-
 # แสดงค่าที่เลือก
 #st.write(f"Start Date: {start_date}, Start Time: {start_time}")
 #st.write(f"End Date: {end_date}, End Time: {end_time}")
 
-start_time = pd.Timestamp.combine(start_date, start_time)
-end_time = pd.Timestamp.combine(end_date, end_time)
+
 
 # ✅ **เพิ่ม State เริ่มต้น ถ้าจำเป็น**
 first_change_time = df["Field change time"].iloc[0]
@@ -352,15 +393,7 @@ if __name__ == "__main__":
     st.sidebar.header("เลือกช่วงเวลา")
 
 
-    selected_device = st.sidebar.selectbox("เลือก Device", device_options, index=0)
-    if selected_device != "ทั้งหมด":
-        df = df[df["Device"] == selected_device].reset_index(drop=True)
-    else:
-        df = df
-    # เลือกวันที่ เวลา
-    start_date = st.sidebar.date_input("เลือกวันที่เริ่มต้น", value=datetime.date(2025, 1, 1), key="start_date")
-    start_time = st.sidebar.time_input("เลือกเวลาที่เริ่มต้น", value=datetime.time(0, 0, 0), key="start_time")
-    end_date = st.sidebar.date_input("เลือกวันที่สิ้นสุด", value=now.date(), key="end_date")
-    end_time = st.sidebar.time_input("เลือกเวลาที่สิ้นสุด", value=datetime.time(0, 0, 0), key="end_time")
+    
+    
 
 
