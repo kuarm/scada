@@ -14,14 +14,28 @@ def load_data(uploaded_file,rows):
     #return None
 
 def filter_data(df, start_date, end_date, selected_states):
-    df_filtered = df[(df['Field change time'].between(start_date, end_date)) & df['State'].isin(selected_states)]
+    if selected_states != "ทั้งหมด":
+        df = df[df["Device"] == selected_device].reset_index(drop=True)
+    else:
+        df = df
+    df_filtered = df[(df['Field change time'].between(start_date, end_date))]
     df_filtered['Adjusted Duration (seconds)'] = df_filtered['Duration (seconds)'].fillna(0)
     df_filtered= df_filtered[['Field change time', 'Message', 'Device', 'Alias']]
-    # Sort data by time
-df = df.sort_values("Field change time").reset_index(drop=True)
+    df_filtered = df_filtered.sort_values("Field change time").reset_index(drop=True) # Sort data by time
+    df_filtered[["Previous State", "New State"]] = df_filtered["Message"].apply(lambda x: pd.Series(extract_states(x))) # ใช้ฟังก์ชันในการแยก Previous State และ New State
+    df_filtered= df_filtered.dropna(subset=["Previous State", "New State"]).reset_index(drop=True) # ลบแถวที่ไม่มีข้อมูล
     return df_filtered
 
+# ฟังก์ชันดึงค่า Previous State และ New State และลบจุดท้ายข้อความ
+def extract_states(message):
+    # ตรวจสอบว่าข้อความเป็น "Remote Unit is now in expected state (Online)."
+    if "Remote Unit is now in expected state (Online)." in str(message):
+        return (None, None)  # ถ้าข้อความเป็นแบบนี้ ไม่ต้องคำนวณค่า
+    match = re.search(r"Remote unit state changed from (.+?) to (.+)", str(message))
+    return (match.group(1), match.group(2).strip(".")) if match else (None, None)
+
 def calculate_state_summary(df_filtered):
+    df_filtered["Next Change Time"] = df_filtered["Field change time"].shift(-1) # คำนวณเวลาสิ้นสุดของแต่ละสถานะ
     state_duration_summary = df_filtered.groupby("State")["Adjusted Duration (seconds)"].sum().reset_index()
     total_duration = df_filtered["Adjusted Duration (seconds)"].sum()
     if total_duration > 0:
@@ -34,26 +48,22 @@ def calculate_state_summary(df_filtered):
 event_summary_path = "EventSummary_Jan2025.xlsx"
 skiprows = 7
 df = load_data(event_summary_path,skiprows)
-    if df is not None:
-        # เลือกวันที่ เวลา
-        start_date = st.sidebar.date_input("Start Date", df['Field change time'].min().date(), key="start_date")
-        end_date = st.sidebar.date_input("End Date", df['Field change time'].max().date(), key="end_date")
-        device_options = ["ทั้งหมด"] + list(df["Device"].unique())
-        selected_states = st.sidebar.multiselect("Select Device", df['Device'].unique(), default=df['Device'].unique())
-        #start_date = st.sidebar.date_input("เลือกวันที่เริ่มต้น", value=datetime.date(2025, 1, 1), key="start_date")
-        #start_time = st.sidebar.time_input("เลือกเวลาที่เริ่มต้น", value=datetime.time(0, 0, 0), key="start_time")
-        #end_date = st.sidebar.date_input("เลือกวันที่สิ้นสุด", value=now.date(), key="end_date")
-        #end_time = st.sidebar.time_input("เลือกเวลาที่สิ้นสุด", value=datetime.time(0, 0, 0), key="end_time")
-        #start_time = pd.Timestamp.combine(start_date, start_time)
-        #end_time = pd.Timestamp.combine(end_date, end_time)
+if df is not None:
+    # เลือกวันที่ เวลา
+    start_date = st.sidebar.date_input("Start Date", df['Field change time'].min().date(), key="start_date")
+    end_date = st.sidebar.date_input("End Date", df['Field change time'].max().date(), key="end_date")
+    device_options = ["ทั้งหมด"] + list(df["Device"].unique())
+    selected_device = st.sidebar.multiselect("เลือก Device", device_options, index=0)
+    #start_date = st.sidebar.date_input("เลือกวันที่เริ่มต้น", value=datetime.date(2025, 1, 1), key="start_date")
+    #start_time = st.sidebar.time_input("เลือกเวลาที่เริ่มต้น", value=datetime.time(0, 0, 0), key="start_time")
+    #end_date = st.sidebar.date_input("เลือกวันที่สิ้นสุด", value=now.date(), key="end_date")
+    #end_time = st.sidebar.time_input("เลือกเวลาที่สิ้นสุด", value=datetime.time(0, 0, 0), key="end_time")
+    #start_time = pd.Timestamp.combine(start_date, start_time)
+    #end_time = pd.Timestamp.combine(end_date, end_time)
 
-        df_filtered = filter_data(df, start_date, end_date)
-        
-        selected_device = st.sidebar.multiselect("เลือก Device", device_options, index=0)
-    if selected_device != "ทั้งหมด":
-        df = df[df["Device"] == selected_device].reset_index(drop=True)
-    else:
-        df = df
+    df_filtered = filter_data(df, start_date, end_date, selected_device)
+    state_summary = calculate_state_summary(df_filtered)    
+    
 
 
 
@@ -61,24 +71,6 @@ df = load_data(event_summary_path,skiprows)
 
 
 
-
-
-# ฟังก์ชันดึงค่า Previous State และ New State และลบจุดท้ายข้อความ
-def extract_states(message):
-    # ตรวจสอบว่าข้อความเป็น "Remote Unit is now in expected state (Online)."
-    if "Remote Unit is now in expected state (Online)." in str(message):
-        return (None, None)  # ถ้าข้อความเป็นแบบนี้ ไม่ต้องคำนวณค่า
-    match = re.search(r"Remote unit state changed from (.+?) to (.+)", str(message))
-    return (match.group(1), match.group(2).strip(".")) if match else (None, None)
-
-# ใช้ฟังก์ชันในการแยก Previous State และ New State
-df[["Previous State", "New State"]] = df["Message"].apply(lambda x: pd.Series(extract_states(x)))
-
-# ลบแถวที่ไม่มีข้อมูล
-df = df.dropna(subset=["Previous State", "New State"]).reset_index(drop=True)
-
-# คำนวณเวลาสิ้นสุดของแต่ละสถานะ
-df["Next Change Time"] = df["Field change time"].shift(-1)
 
 # ✅ **กรองข้อมูล Device**
 device_options = ["ทั้งหมด"] + list(df["Device"].unique())
