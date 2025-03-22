@@ -5,6 +5,8 @@ import numpy as np
 import plotly.express as px
 import datetime
 
+normal_state = "Online"
+abnormal_states = ["Initializing", "Telemetry Failure", "Connecting"]
 def load_data(uploaded_file,rows):
     #if uploaded_file is not None:
     df = pd.read_excel(uploaded_file, skiprows=rows)
@@ -19,7 +21,6 @@ def filter_data(df, start_date, end_date, selected_device):
     else:
         df = df
     df_filtered = df[(df['Field change time'].between(start_date, end_date))]
-    st.write(df_filtered)
     #df_filtered['Adjusted Duration (seconds)'] = df_filtered['Adjusted Duration (seconds)'].fillna(0)
     df_filtered= df_filtered[['Field change time', 'Message', 'Device', 'Alias']]
     df_filtered = df_filtered.sort_values("Field change time").reset_index(drop=True) # Sort data by time
@@ -38,7 +39,6 @@ def extract_states(message):
 def adjust_stateandtime(df, start_time, end_time):
     if df.empty:
         return df  # ถ้า DataFrame ว่าง ให้ return กลับทันที
-
     df["Next Change Time"] = df["Field change time"].shift(-1) # คำนวณเวลาสิ้นสุดของแต่ละสถานะ
     # ✅ **เพิ่ม State เริ่มต้น ถ้าจำเป็น**
     first_change_time = df["Field change time"].iloc[0]
@@ -112,23 +112,22 @@ def calculate_state_summary(df_filtered):
         lambda x: pd.Series(split_duration(x)))
     state_duration_summary["Formatted Duration"] = state_duration_summary.apply(format_duration, axis=1)
     state_duration_summary.rename(columns={"New State": "State"}, inplace=True)
-
     # ✅ **คำนวณ Availability (%)**
-    normal_state = "Online"
-    faulty_states = ["Telemetry Failure", "Connecting", "Initializing"]
     normal_duration = df_filtered[df_filtered["New State"] == normal_state]["Adjusted Duration (seconds)"].sum()
-    faulty_duration = df_filtered[df_filtered["New State"].isin(faulty_states)]["Adjusted Duration (seconds)"].sum()
+    abnormal_duration = df_filtered[df_filtered["New State"].isin(abnormal_states)]["Adjusted Duration (seconds)"].sum()
     total_duration = df_filtered["Adjusted Duration (seconds)"].sum()
     if total_duration > 0:
-        availability = (normal_duration / total_duration) * 100
-        faulty_percentage = (faulty_duration / total_duration) * 100
+        normal_percentage = (normal_duration / total_duration) * 100
+        abnormal_percentage = (abnormal_duration / total_duration) * 100
         # ✅ **คำนวณ Availability (%) ของแต่ละ State**
         state_duration_summary["Availability (%)"] = (state_duration_summary["Adjusted Duration (seconds)"] / total_duration) * 100
     else:
-        availability = 0
-        faulty_percentage = 0
+        normal_percentage = 0
+        abnormal_percentage = 0
         state_duration_summary["Availability (%)"] = 0 
-    
+    return state_duration_summary
+
+def calculate_device_availability(df_filtered):
     # ✅ **คำนวณ Availability (%) ของแต่ละ Device**
     # คำนวณเวลารวมของแต่ละ Device
     device_total_duration = df_filtered.groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
@@ -145,8 +144,72 @@ def calculate_state_summary(df_filtered):
         lambda x: pd.Series(split_duration(x)))
     device_availability[["Total Days", "Total Hours", "Total Minutes", "Total Seconds"]] = device_availability["Total Duration (seconds)"].apply(
         lambda x: pd.Series(split_duration(x)))
-    return state_duration_summary
+    return device_availability
 
+def calculate_device_count(df_filtered):
+    # ✅ **จำนวนครั้งที่เกิด State ต่างๆ ของแต่ละ Device**
+    # คำนวณจำนวนครั้งของแต่ละ State
+    state_count = df_filtered[df_filtered["New State"].isin(abnormal_states)].groupby(["Device", "New State"]).size().unstack(fill_value=0)
+    # คำนวณระยะเวลารวมของแต่ละ State
+    state_duration = df_filtered[df_filtered["New State"].isin(abnormal_states)].groupby(["Device", "New State"])["Adjusted Duration (seconds)"].sum().unstack(fill_value=0)
+    # รวมจำนวนครั้งและระยะเวลาของแต่ละ State
+    summary_df = state_count.merge(state_duration, left_index=True, right_index=True, suffixes=(" Count", " Duration (seconds)"))
+    # จัดลำดับคอลัมน์ให้เป็นไปตามที่ต้องการ
+    summary_df = summary_df.reindex(columns=[
+        "Initializing Count", "Initializing Duration (seconds)",
+        "Telemetry Failure Count", "Telemetry Failure Duration (seconds)",
+        "Connecting Count", "Connecting Duration (seconds)"
+    ])
+    # ✅ **รวมตารางโดยใช้ "Device" เป็น key**
+    merged_df = pd.merge(device_availability, summary_df, on="Device", how="left")
+    # จัดลำดับคอลัมน์ตามที่ต้องการ
+    merged_df = merged_df[[
+        "Device", "Availability (%)",
+        "Initializing Count", "Initializing Duration (seconds)",
+        "Telemetry Failure Count", "Telemetry Failure Duration (seconds)",
+        "Connecting Count", "Connecting Duration (seconds)"
+    ]]
+    # เปลี่ยนชื่อคอลัมน์ตามที่ต้องการ
+    merged_df = merged_df.rename(columns={
+        "Initializing Count": "จำนวนครั้ง Initializing",
+        "Initializing Duration (seconds)": "ระยะเวลา Initializing (seconds)",
+        "Telemetry Failure Count": "จำนวนครั้ง Telemetry Failure",
+        "Telemetry Failure Duration (seconds)": "ระยะเวลา Telemetry Failure (seconds)",
+        "Connecting Count": "จำนวนครั้ง Connecting",
+        "Connecting Duration (seconds)": "ระยะเวลา Connecting (seconds)"
+    })
+    return merged_df
+
+def plot(df):
+    # ✅ **BarChart**
+    # กำหนดช่วงของ Availability (%) เป็นช่วงละ 10%
+    bins1 = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    labels1 = [f"{bins1[i]}-{bins1[i+1]}" for i in range(len(bins1)-1)]  # ["0-10", "10-20", ..., "90-100"]
+    # จัดกลุ่มข้อมูล Availability (%) ตามช่วงที่กำหนด
+    df["Availability Range"] = pd.cut(
+        df["Availability (%)"], bins=bins1, labels=labels1, right=False
+    )
+    # นับจำนวน Device ในแต่ละช่วง Availability (%)
+    availability_counts = df["Availability Range"].value_counts().reindex(labels1, fill_value=0).reset_index()
+    availability_counts.columns = ["Availability Range", "Device Count"]
+    # สร้าง Histogram โดยใช้ px.bar() เพื่อควบคุม bin edges ได้ตรง
+    fig = px.bar(
+        availability_counts,
+        x="Availability Range",
+        y="Device Count",
+        title="จำนวน Device ในแต่ละช่วง Availability (%)",
+        labels={"Availability Range": "Availability (%)", "Device Count": "จำนวน Device"},
+        text_auto=True  # แสดงค่าบนแท่งกราฟ
+    )
+    # ปรับแต่งรูปแบบกราฟ
+    fig.update_layout(
+        xaxis_title="Availability (%)",
+        yaxis_title="จำนวน Device",
+        title_font_size=20,
+        xaxis_tickangle=-45,  # หมุนตัวอักษรแกน X
+        bargap=0.005
+    )
+    return fig
 # โหลดข้อมูลจากไฟล์
 event_summary_path = "EventSummary_Jan2025.xlsx"
 skiprows = 7
@@ -175,22 +238,14 @@ if df is not None:
     #end_time = pd.Timestamp.combine(end_date, end_time)
 
     df_filtered = filter_data(df, start_date, end_date, selected_device)
-    df_filtered = adjust_stateandtime(df_filtered, start_time, end_time)
+    df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
     state_summary = calculate_state_summary(df_filtered)
-    st.write(df_filters)
-    st.write(state_summary)
-
-
-
-
-
-
-
-
-
-
-
-
+    device_availability = calculate_device_availability(df_filtered)
+    device_count_duration = calculate_device_count(df_filtered)
+    plot_availability = plot(device_count_duration)
+    evaluate = evaluate
+    st.write(device_count_duration)
+    st.write(plot_availability)
 
 # ✅ **แสดงผลลัพธ์ใน Streamlit**
 #st.write(f"### ตาราง State จาก {start_time} ถึง {end_time}")
@@ -210,144 +265,73 @@ if df is not None:
 #st.write("### Availability (%) ของแต่ละ Device")
 #st.dataframe(device_availability[["Device", "Availability (%)", "Online Days", "Online Hours", "Online Minutes", "Online Seconds","Total Days", "Total Hours", "Total Minutes", "Total Seconds"]])
 
-# ✅ **จำนวนครั้งที่เกิด State ต่างๆ ของแต่ละ Device**
-# กำหนดรายชื่อ State ผิดปกติ
-abnormal_states = ["Initializing", "Telemetry Failure", "Connecting"]
 
-# คำนวณจำนวนครั้งของแต่ละ State
-state_count = df_filtered[df_filtered["New State"].isin(abnormal_states)].groupby(["Device", "New State"]).size().unstack(fill_value=0)
-
-# คำนวณระยะเวลารวมของแต่ละ State
-state_duration = df_filtered[df_filtered["New State"].isin(abnormal_states)].groupby(["Device", "New State"])["Adjusted Duration (seconds)"].sum().unstack(fill_value=0)
-
-# รวมจำนวนครั้งและระยะเวลาของแต่ละ State
-summary_df = state_count.merge(state_duration, left_index=True, right_index=True, suffixes=(" Count", " Duration (seconds)"))
-
-# จัดลำดับคอลัมน์ให้เป็นไปตามที่ต้องการ
-summary_df = summary_df.reindex(columns=[
-    "Initializing Count", "Initializing Duration (seconds)",
-    "Telemetry Failure Count", "Telemetry Failure Duration (seconds)",
-    "Connecting Count", "Connecting Duration (seconds)"
-])
 
 # แสดงผลใน Streamlit
 #st.write("### สรุปจำนวนครั้งและระยะเวลาของ State ผิดปกติ แยกตาม Device")
 #st.dataframe(summary_df)
 
-# ✅ **รวมตารางโดยใช้ "Device" เป็น key**
-merged_df = pd.merge(device_availability, summary_df, on="Device", how="left")
-# จัดลำดับคอลัมน์ตามที่ต้องการ
-merged_df = merged_df[[
-    "Device", "Availability (%)",
-    "Initializing Count", "Initializing Duration (seconds)",
-    "Telemetry Failure Count", "Telemetry Failure Duration (seconds)",
-    "Connecting Count", "Connecting Duration (seconds)"
-]]
-
-# เปลี่ยนชื่อคอลัมน์ตามที่ต้องการ
-merged_df = merged_df.rename(columns={
-    "Initializing Count": "จำนวนครั้ง Initializing",
-    "Initializing Duration (seconds)": "ระยะเวลา Initializing (seconds)",
-    "Telemetry Failure Count": "จำนวนครั้ง Telemetry Failure",
-    "Telemetry Failure Duration (seconds)": "ระยะเวลา Telemetry Failure (seconds)",
-    "Connecting Count": "จำนวนครั้ง Connecting",
-    "Connecting Duration (seconds)": "ระยะเวลา Connecting (seconds)"
-})
-
 # แสดงผล
 #st.write("### Availability (%), จำนวนครั้ง, ระยะเวลาของ State ที่ผิดปกติ แยกตาม Device")
 #st.dataframe(merged_df)
 
-# ✅ **BarChart**
-# กำหนดช่วงของ Availability (%) เป็นช่วงละ 10%
-bins1 = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-labels1 = [f"{bins1[i]}-{bins1[i+1]}" for i in range(len(bins1)-1)]  # ["0-10", "10-20", ..., "90-100"]
-
-merged_df_copy = merged_df.copy()
-
-# จัดกลุ่มข้อมูล Availability (%) ตามช่วงที่กำหนด
-merged_df_copy["Availability Range"] = pd.cut(
-    merged_df_copy["Availability (%)"], bins=bins1, labels=labels1, right=False
-)
-
-# นับจำนวน Device ในแต่ละช่วง Availability (%)
-availability_counts = merged_df_copy["Availability Range"].value_counts().reindex(labels1, fill_value=0).reset_index()
-availability_counts.columns = ["Availability Range", "Device Count"]
-
-# สร้าง Histogram โดยใช้ px.bar() เพื่อควบคุม bin edges ได้ตรง
-fig = px.bar(
-    availability_counts,
-    x="Availability Range",
-    y="Device Count",
-    title="จำนวน Device ในแต่ละช่วง Availability (%)",
-    labels={"Availability Range": "Availability (%)", "Device Count": "จำนวน Device"},
-    text_auto=True  # แสดงค่าบนแท่งกราฟ
-)
-
-# ปรับแต่งรูปแบบกราฟ
-fig.update_layout(
-    xaxis_title="Availability (%)",
-    yaxis_title="จำนวน Device",
-    title_font_size=20,
-    xaxis_tickangle=-45,  # หมุนตัวอักษรแกน X
-    bargap=0.005
-)
 
 # แสดงกราฟใน Streamlit
 #st.plotly_chart(fig)
 
-# ✅ **ประเมิน**
-# กำหนดช่วง Availability (%)
-bins2 = [0, 80, 90, 100]
-labels2 = ["90 < Availability (%) <= 100", "80 < Availability (%) <= 90", "0 <= Availability (%) <= 80"]  # ชื่อช่วงใหม่
+def evaluate():
+    # ✅ **ประเมิน**
+    # กำหนดช่วง Availability (%)
+    bins = [0, 80, 90, 100]
+    labels = ["90 < Availability (%) <= 100", "80 < Availability (%) <= 90", "0 <= Availability (%) <= 80"]  # ชื่อช่วงใหม่
 
-merged_df2_copy = merged_df.copy()
+    merged_df2_copy = merged_df.copy()
 
-# เพิ่มคอลัมน์ "เกณฑ์การประเมิน"
-merged_df2_copy ["เกณฑ์การประเมิน"] = pd.cut(merged_df2_copy ["Availability (%)"], bins=bins2, labels=labels2, right=True)
+    # เพิ่มคอลัมน์ "เกณฑ์การประเมิน"
+    merged_df2_copy ["เกณฑ์การประเมิน"] = pd.cut(merged_df2_copy ["Availability (%)"], bins=bins2, labels=labels2, right=True)
 
-# กำหนดเงื่อนไขสำหรับผลการประเมิน
-def evaluate_result(row):
-    if row["เกณฑ์การประเมิน"] == "90 < Availability (%) <= 100":
-        return "✅ ไม่แฮงค์"
-    elif row["เกณฑ์การประเมิน"] == "80 < Availability (%) <= 90":
-        return "⚠️ ทรงๆ"
-    else:
-        return "❌ ต้องนอน"
+    # กำหนดเงื่อนไขสำหรับผลการประเมิน
+    def evaluate_result(row):
+        if row["เกณฑ์การประเมิน"] == "90 < Availability (%) <= 100":
+            return "✅ ไม่แฮงค์"
+        elif row["เกณฑ์การประเมิน"] == "80 < Availability (%) <= 90":
+            return "⚠️ ทรงๆ"
+        else:
+            return "❌ ต้องนอน"
 
-# เพิ่มคอลัมน์ "ผลการประเมิน"
-merged_df2_copy["ผลการประเมิน"] = merged_df2_copy.apply(evaluate_result, axis=1)
+    # เพิ่มคอลัมน์ "ผลการประเมิน"
+    merged_df2_copy["ผลการประเมิน"] = merged_df2_copy.apply(evaluate_result, axis=1)
 
-# สรุปจำนวน Device ในแต่ละเกณฑ์
-summary_df = merged_df2_copy["ผลการประเมิน"].value_counts().reset_index()
-summary_df.columns = ["ผลการประเมิน", "จำนวน Device"]
+    # สรุปจำนวน Device ในแต่ละเกณฑ์
+    summary_df = merged_df2_copy["ผลการประเมิน"].value_counts().reset_index()
+    summary_df.columns = ["ผลการประเมิน", "จำนวน Device"]
 
-# สรุปจำนวน Device ในแต่ละ "เกณฑ์การประเมิน" และ "ผลการประเมิน"
-summary_df = merged_df2_copy.groupby(["เกณฑ์การประเมิน", "ผลการประเมิน"]).size().reset_index(name="จำนวน Device")
+    # สรุปจำนวน Device ในแต่ละ "เกณฑ์การประเมิน" และ "ผลการประเมิน"
+    summary_df = merged_df2_copy.groupby(["เกณฑ์การประเมิน", "ผลการประเมิน"]).size().reset_index(name="จำนวน Device")
 
-# ลบแถวที่ "จำนวน Device" เป็น 0 ออก
-summary_df = summary_df[summary_df["จำนวน Device"] > 0]
+    # ลบแถวที่ "จำนวน Device" เป็น 0 ออก
+    summary_df = summary_df[summary_df["จำนวน Device"] > 0]
 
-# ลบ index ออกจาก summary_df
-summary_df = summary_df.reset_index(drop=True)
+    # ลบ index ออกจาก summary_df
+    summary_df = summary_df.reset_index(drop=True)
 
-# จัดกลุ่มข้อมูล Availability (%) ตามช่วงที่กำหนด
-merged_df2_copy["Availability Range"] = pd.cut(
-    merged_df2_copy["Availability (%)"], bins=bins2, labels=labels2, right=True
-)
+    # จัดกลุ่มข้อมูล Availability (%) ตามช่วงที่กำหนด
+    merged_df2_copy["Availability Range"] = pd.cut(
+        merged_df2_copy["Availability (%)"], bins=bins2, labels=labels2, right=True
+    )
 
-# คำนวณจำนวนทั้งหมดของ Device
-total_devices = summary_df["จำนวน Device"].sum()
+    # คำนวณจำนวนทั้งหมดของ Device
+    total_devices = summary_df["จำนวน Device"].sum()
 
-# คำนวณ % ของแต่ละช่วง
-summary_df["เปอร์เซ็นต์ (%)"] = (summary_df["จำนวน Device"] / total_devices) * 100
+    # คำนวณ % ของแต่ละช่วง
+    summary_df["เปอร์เซ็นต์ (%)"] = (summary_df["จำนวน Device"] / total_devices) * 100
 
-# จัดรูปแบบค่าเปอร์เซ็นต์ให้เป็นทศนิยม 2 ตำแหน่ง
-summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].map("{:.2f}%".format)
+    # จัดรูปแบบค่าเปอร์เซ็นต์ให้เป็นทศนิยม 2 ตำแหน่ง
+    summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].map("{:.2f}%".format)
 
-# แสดง DataFrame พร้อมเปอร์เซ็นต์
-#st.write("### จำนวน Device ในแต่ละเกณฑ์การประเมิน")
-#st.dataframe(summary_df, use_container_width=True)
+    # แสดง DataFrame พร้อมเปอร์เซ็นต์
+    #st.write("### จำนวน Device ในแต่ละเกณฑ์การประเมิน")
+    #st.dataframe(summary_df, use_container_width=True)
 
 # แสดงผลเป็นแผนภูมิแท่ง
 fig = px.bar(
