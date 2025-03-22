@@ -9,7 +9,7 @@ def load_data(uploaded_file,rows):
     #if uploaded_file is not None:
     df = pd.read_excel(uploaded_file, skiprows=rows)
     df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
-    #df = df.drop(columns=["#"])
+    df = df.drop(columns=["#"])
     return df
     #return None
 
@@ -20,7 +20,7 @@ def filter_data(df, start_date, end_date, selected_device):
         df = df
     df_filtered = df[(df['Field change time'].between(start_date, end_date))]
     st.write(df_filtered)
-    df_filtered['Adjusted Duration (seconds)'] = df_filtered['Duration (seconds)'].fillna(0)
+    #df_filtered['Adjusted Duration (seconds)'] = df_filtered['Adjusted Duration (seconds)'].fillna(0)
     df_filtered= df_filtered[['Field change time', 'Message', 'Device', 'Alias']]
     df_filtered = df_filtered.sort_values("Field change time").reset_index(drop=True) # Sort data by time
     df_filtered[["Previous State", "New State"]] = df_filtered["Message"].apply(lambda x: pd.Series(extract_states(x))) # ใช้ฟังก์ชันในการแยก Previous State และ New State
