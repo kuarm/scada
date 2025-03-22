@@ -13,12 +13,13 @@ def load_data(uploaded_file,rows):
     return df
     #return None
 
-def filter_data(df, start_date, end_date, selected_states):
-    if selected_states != "ทั้งหมด":
+def filter_data(df, start_date, end_date, selected_device):
+    if selected_device != "ทั้งหมด":
         df = df[df["Device"] == selected_device].reset_index(drop=True)
     else:
         df = df
     df_filtered = df[(df['Field change time'].between(start_date, end_date))]
+    st.write(df_filtered)
     df_filtered['Adjusted Duration (seconds)'] = df_filtered['Duration (seconds)'].fillna(0)
     df_filtered= df_filtered[['Field change time', 'Message', 'Device', 'Alias']]
     df_filtered = df_filtered.sort_values("Field change time").reset_index(drop=True) # Sort data by time
@@ -34,98 +35,54 @@ def extract_states(message):
     match = re.search(r"Remote unit state changed from (.+?) to (.+)", str(message))
     return (match.group(1), match.group(2).strip(".")) if match else (None, None)
 
-def calculate_state_summary(df_filtered):
-    df_filtered["Next Change Time"] = df_filtered["Field change time"].shift(-1) # คำนวณเวลาสิ้นสุดของแต่ละสถานะ
-    state_duration_summary = df_filtered.groupby("State")["Adjusted Duration (seconds)"].sum().reset_index()
-    total_duration = df_filtered["Adjusted Duration (seconds)"].sum()
-    if total_duration > 0:
-        state_duration_summary["Availability (%)"] = (state_duration_summary["Adjusted Duration (seconds)"] / total_duration) * 100
-    else:
-        state_duration_summary["Availability (%)"] = 0
-    return state_duration_summary
+def adjust_stateandtime(df, start_time, end_time):
+    if df.empty:
+        return df  # ถ้า DataFrame ว่าง ให้ return กลับทันที
 
-# โหลดข้อมูลจากไฟล์
-event_summary_path = "EventSummary_Jan2025.xlsx"
-skiprows = 7
-df = load_data(event_summary_path,skiprows)
-if df is not None:
-    # เลือกวันที่ เวลา
-    start_date = st.sidebar.date_input("Start Date", df['Field change time'].min().date(), key="start_date")
-    end_date = st.sidebar.date_input("End Date", df['Field change time'].max().date(), key="end_date")
-    device_options = ["ทั้งหมด"] + list(df["Device"].unique())
-    selected_device = st.sidebar.multiselect("เลือก Device", device_options, index=0)
-    #start_date = st.sidebar.date_input("เลือกวันที่เริ่มต้น", value=datetime.date(2025, 1, 1), key="start_date")
-    #start_time = st.sidebar.time_input("เลือกเวลาที่เริ่มต้น", value=datetime.time(0, 0, 0), key="start_time")
-    #end_date = st.sidebar.date_input("เลือกวันที่สิ้นสุด", value=now.date(), key="end_date")
-    #end_time = st.sidebar.time_input("เลือกเวลาที่สิ้นสุด", value=datetime.time(0, 0, 0), key="end_time")
-    #start_time = pd.Timestamp.combine(start_date, start_time)
-    #end_time = pd.Timestamp.combine(end_date, end_time)
-
-    df_filtered = filter_data(df, start_date, end_date, selected_device)
-    state_summary = calculate_state_summary(df_filtered)    
+    df["Next Change Time"] = df["Field change time"].shift(-1) # คำนวณเวลาสิ้นสุดของแต่ละสถานะ
+    # ✅ **เพิ่ม State เริ่มต้น ถ้าจำเป็น**
+    first_change_time = df["Field change time"].iloc[0]
+    if first_change_time > start_time:
+        first_state = df["Previous State"].iloc[0]
+        new_row = pd.DataFrame({
+            "Device": df["Device"].iloc[0],
+            "Field change time": [start_time],
+            "Previous State": [first_state],
+            "New State": [first_state],
+            "Next Change Time": [first_change_time]
+        })
+        df = pd.concat([new_row, df], ignore_index=True)
+    # ✅ **เพิ่ม State สุดท้าย ถ้าจำเป็น**
+    if len(df) > 1:  # ป้องกัน IndexError จาก iloc[-2]
+        last_change_time = df["Next Change Time"].iloc[-2]
+        if pd.notna(last_change_time) and last_change_time < end_time:
+            last_state = df["New State"].iloc[-1]
+            new_row = pd.DataFrame({
+                "Device": df["Device"].iloc[-1],
+                "Field change time": [last_change_time],
+                "Previous State": [last_state],
+                "New State": [last_state],
+                "Next Change Time": [end_time]
+            })
+            df = pd.concat([df, new_row], ignore_index=True)
     
+    # ปรับเวลาให้อยู่ในช่วงที่กำหนด
+    df["Adjusted Start"] = df["Field change time"].clip(lower=start_time, upper=end_time)
+    df["Adjusted End"] = df["Next Change Time"].clip(lower=start_time, upper=end_time)
+    # คำนวณช่วงเวลาของแต่ละ State (วินาที)
+    df["Adjusted Duration (seconds)"] = (df["Adjusted End"] - df["Adjusted Start"]).dt.total_seconds()
+    df = df.dropna(subset=["Adjusted Duration (seconds)"])
 
+    # กรองข้อมูลเฉพาะที่อยู่ในช่วงเวลาที่กำหนด
+    df = df[(df["Adjusted Start"] >= start_time) & (df["Adjusted End"] <= end_time)]
 
-
-
-
-
-
-
-# ✅ **กรองข้อมูล Device**
-device_options = ["ทั้งหมด"] + list(df["Device"].unique())
-
-
-    
-# ดึงวันที่และเวลาปัจจุบัน
-now = pd.Timestamp.now()
-
-# แสดงค่าที่เลือก
-#st.write(f"Start Date: {start_date}, Start Time: {start_time}")
-#st.write(f"End Date: {end_date}, End Time: {end_time}")
-
-""""""
-
-# ✅ **เพิ่ม State เริ่มต้น ถ้าจำเป็น**
-first_change_time = df["Field change time"].iloc[0]
-if first_change_time > start_time:
-    first_state = df["Previous State"].iloc[0]
-    new_row = pd.DataFrame({
-        "Device": df["Device"].iloc[0],
-        "Field change time": [start_time],
-        "Previous State": [first_state],
-        "New State": [first_state],
-        "Next Change Time": [first_change_time]
-    })
-    df = pd.concat([new_row, df], ignore_index=True)
-    
-# ✅ **เพิ่ม State สุดท้าย ถ้าจำเป็น**
-last_change_time = df["Next Change Time"].iloc[-2]
-if pd.notna(last_change_time) and last_change_time < end_time:
-    last_state = df["New State"].iloc[-1]
-    new_row = pd.DataFrame({
-         "Device": df["Device"].iloc[-1],
-        "Field change time": [last_change_time],
-        "Previous State": [last_state],
-        "New State": [last_state],
-        "Next Change Time": [end_time]
-    })
-    df = pd.concat([df, new_row], ignore_index=True)
-
-# ปรับเวลาให้อยู่ในช่วงที่กำหนด
-df["Adjusted Start"] = df["Field change time"].clip(lower=start_time, upper=end_time)
-df["Adjusted End"] = df["Next Change Time"].clip(lower=start_time, upper=end_time)
-
-# คำนวณช่วงเวลาของแต่ละ State (วินาที)
-df["Adjusted Duration (seconds)"] = (df["Adjusted End"] - df["Adjusted Start"]).dt.total_seconds()
-df_filtered = df.dropna(subset=["Adjusted Duration (seconds)"])
-
-# กรองข้อมูลเฉพาะที่อยู่ในช่วงเวลาที่กำหนด
-df_filtered = df_filtered[(df_filtered["Adjusted Start"] >= start_time) & (df_filtered["Adjusted End"] <= end_time)]
-
-# ใส่ค่า start_time และ end_time ในทุกแถว
-df_filtered["Start Time Filter"] = start_time
-df_filtered["End Time Filter"] = end_time
+    # ใส่ค่า start_time และ end_time ในทุกแถว
+    df["Start Time Filter"] = start_time
+    df["End Time Filter"] = end_time
+    df[["Days", "Hours", "Minutes", "Seconds"]] = df["Adjusted Duration (seconds)"].apply(
+        lambda x: pd.Series(split_duration(x), index=["Days", "Hours", "Minutes", "Seconds"]))
+    df["Formatted Duration"] = df.apply(format_duration, axis=1)
+    return df
 
 # ✅ **แปลงวินาทีเป็นวัน ชั่วโมง นาที วินาที**
 def split_duration(seconds):
@@ -134,10 +91,6 @@ def split_duration(seconds):
     minutes = int((seconds % 3600) // 60)
     seconds = int(seconds % 60)
     return days, hours, minutes, seconds
-
-df_filtered[["Days", "Hours", "Minutes", "Seconds"]] = df_filtered["Adjusted Duration (seconds)"].apply(
-    lambda x: pd.Series(split_duration(x), index=["Days", "Hours", "Minutes", "Seconds"])
-)
 
 # ✅ **ฟังก์ชันแสดงผลเป็นข้อความ**
 def format_duration(row):
@@ -152,39 +105,98 @@ def format_duration(row):
         parts.append(f"{row['Seconds']} วินาที")
     return " ".join(parts) if parts else "0 วินาที"
 
-df_filtered["Formatted Duration"] = df_filtered.apply(format_duration, axis=1)
+def calculate_state_summary(df_filtered):
+    # ✅ **สรุปผลรวมเวลาแต่ละ State**
+    state_duration_summary = df_filtered.groupby("New State", dropna=True)["Adjusted Duration (seconds)"].sum().reset_index()
+    state_duration_summary[["Days", "Hours", "Minutes", "Seconds"]] = state_duration_summary["Adjusted Duration (seconds)"].apply(
+        lambda x: pd.Series(split_duration(x)))
+    state_duration_summary["Formatted Duration"] = state_duration_summary.apply(format_duration, axis=1)
+    state_duration_summary.rename(columns={"New State": "State"}, inplace=True)
 
-# ✅ **สรุปผลรวมเวลาแต่ละ State**
-state_duration_summary = df_filtered.groupby("New State", dropna=True)["Adjusted Duration (seconds)"].sum().reset_index()
+    # ✅ **คำนวณ Availability (%)**
+    normal_state = "Online"
+    faulty_states = ["Telemetry Failure", "Connecting", "Initializing"]
+    normal_duration = df_filtered[df_filtered["New State"] == normal_state]["Adjusted Duration (seconds)"].sum()
+    faulty_duration = df_filtered[df_filtered["New State"].isin(faulty_states)]["Adjusted Duration (seconds)"].sum()
+    total_duration = df_filtered["Adjusted Duration (seconds)"].sum()
+    if total_duration > 0:
+        availability = (normal_duration / total_duration) * 100
+        faulty_percentage = (faulty_duration / total_duration) * 100
+        # ✅ **คำนวณ Availability (%) ของแต่ละ State**
+        state_duration_summary["Availability (%)"] = (state_duration_summary["Adjusted Duration (seconds)"] / total_duration) * 100
+    else:
+        availability = 0
+        faulty_percentage = 0
+        state_duration_summary["Availability (%)"] = 0 
+    
+    # ✅ **คำนวณ Availability (%) ของแต่ละ Device**
+    # คำนวณเวลารวมของแต่ละ Device
+    device_total_duration = df_filtered.groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
+    device_total_duration.columns = ["Device", "Total Duration (seconds)"]
+    # คำนวณเวลาที่ Device อยู่ในสถานะปกติ
+    device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
+    device_online_duration.columns = ["Device", "Online Duration (seconds)"]
+    # รวมข้อมูลทั้งสองตาราง
+    device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
+    # คำนวณ Availability (%)
+    device_availability["Availability (%)"] = (device_availability["Online Duration (seconds)"] / device_availability["Total Duration (seconds)"]) * 100
+    # แปลงวินาทีเป็น วัน ชั่วโมง นาที วินาที
+    device_availability[["Online Days", "Online Hours", "Online Minutes", "Online Seconds"]] = device_availability["Online Duration (seconds)"].apply(
+        lambda x: pd.Series(split_duration(x)))
+    device_availability[["Total Days", "Total Hours", "Total Minutes", "Total Seconds"]] = device_availability["Total Duration (seconds)"].apply(
+        lambda x: pd.Series(split_duration(x)))
+    return state_duration_summary
 
-state_duration_summary[["Days", "Hours", "Minutes", "Seconds"]] = state_duration_summary["Adjusted Duration (seconds)"].apply(
-    lambda x: pd.Series(split_duration(x))
-)
-state_duration_summary["Formatted Duration"] = state_duration_summary.apply(format_duration, axis=1)
-state_duration_summary.rename(columns={"New State": "State"}, inplace=True)
+# โหลดข้อมูลจากไฟล์
+event_summary_path = "EventSummary_Jan2025.xlsx"
+skiprows = 7
+df = load_data(event_summary_path,skiprows)
+if df is not None:
+    # เลือกวันที่ เวลา
+    start_date = st.sidebar.date_input("Start Date", df['Field change time'].min().date(), key="start_date")
+    end_date = st.sidebar.date_input("End Date", df['Field change time'].max().date(), key="end_date")
+    start_time = st.sidebar.text_input("Start Time", df["Field change time"].min().strftime("%H:%M:%S"), key="start_time")
+    end_time = st.sidebar.text_input("End Time", df['Field change time'].max().strftime("%H:%M:%S"), key="end_time")
+    # แปลงเป็น datetime.time()
+    try:
+        start_time = pd.to_datetime(start_time, format="%H:%M:%S").time()
+        end_time = pd.to_datetime(end_time, format="%H:%M:%S").time()
+    except ValueError:
+        st.error("❌ Invalid Time Format! Please use HH:MM:SS")
+    start_date = pd.Timestamp.combine(start_date, start_time)
+    end_date = pd.Timestamp.combine(end_date, end_time)
+    device_options = ["ทั้งหมด"] + list(df["Device"].unique())
+    selected_device = st.sidebar.selectbox("เลือก Device", device_options, index=0)
+    #start_date = st.sidebar.date_input("เลือกวันที่เริ่มต้น", value=datetime.date(2025, 1, 1), key="start_date")
+    #start_time = st.sidebar.time_input("เลือกเวลาที่เริ่มต้น", value=datetime.time(0, 0, 0), key="start_time")
+    #end_date = st.sidebar.date_input("เลือกวันที่สิ้นสุด", value=now.date(), key="end_date")
+    #end_time = st.sidebar.time_input("เลือกเวลาที่สิ้นสุด", value=datetime.time(0, 0, 0), key="end_time")
+    #start_time = pd.Timestamp.combine(start_date, start_time)
+    #end_time = pd.Timestamp.combine(end_date, end_time)
+
+    df_filtered = filter_data(df, start_date, end_date, selected_device)
+    df_filtered = adjust_stateandtime(df_filtered, start_time, end_time)
+    state_summary = calculate_state_summary(df_filtered)
+    st.write(df_filters)
+    st.write(state_summary)
+
+
+
+
+
+
+
+
+
+
+
+
 
 # ✅ **แสดงผลลัพธ์ใน Streamlit**
 #st.write(f"### ตาราง State จาก {start_time} ถึง {end_time}")
 #st.dataframe(df_filtered[["Device", "Field change time", "Previous State", "New State", "Adjusted Start", "Adjusted End", "Days", "Hours", "Minutes", "Seconds", "Formatted Duration"]])
 #st.write(f"### สรุปเวลารวมของแต่ละ State ของ Device : {selected_device}")
 #st.dataframe(state_duration_summary[["State", "Days", "Hours", "Minutes", "Seconds", "Formatted Duration"]]
-
-# ✅ **คำนวณ Availability (%)**
-normal_state = "Online"
-faulty_states = ["Telemetry Failure", "Connecting", "Initializing"]
-normal_duration = df_filtered[df_filtered["New State"] == normal_state]["Adjusted Duration (seconds)"].sum()
-faulty_duration = df_filtered[df_filtered["New State"].isin(faulty_states)]["Adjusted Duration (seconds)"].sum()
-total_duration = df_filtered["Adjusted Duration (seconds)"].sum()
-
-if total_duration > 0:
-    availability = (normal_duration / total_duration) * 100
-    faulty_percentage = (faulty_duration / total_duration) * 100
-else:
-    availability = 0
-    faulty_percentage = 0
-
-# ✅ **คำนวณ Availability (%) ของแต่ละ State**
-state_duration_summary["Availability (%)"] = (state_duration_summary["Adjusted Duration (seconds)"] / total_duration) * 100
 
 # ✅ **แสดงผล**
 #st.write(df_filtered)
@@ -193,30 +205,6 @@ state_duration_summary["Availability (%)"] = (state_duration_summary["Adjusted D
 #st.write(f"### เวลาที่ทำงานผิดปกติ: {faulty_percentage:.2f}%")
 #st.write("### ค่า Availability (%) ของแต่ละ State")
 #st.dataframe(state_duration_summary[["State", "Days", "Hours", "Minutes", "Seconds", "Formatted Duration", "Availability (%)"]])
-
-
-# ✅ **คำนวณ Availability (%) ของแต่ละ Device**
-# คำนวณเวลารวมของแต่ละ Device
-device_total_duration = df_filtered.groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
-device_total_duration.columns = ["Device", "Total Duration (seconds)"]
-
-# คำนวณเวลาที่ Device อยู่ในสถานะปกติ
-device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
-device_online_duration.columns = ["Device", "Online Duration (seconds)"]
-
-# รวมข้อมูลทั้งสองตาราง
-device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
-
-# คำนวณ Availability (%)
-device_availability["Availability (%)"] = (device_availability["Online Duration (seconds)"] / device_availability["Total Duration (seconds)"]) * 100
-
-# แปลงวินาทีเป็น วัน ชั่วโมง นาที วินาที
-device_availability[["Online Days", "Online Hours", "Online Minutes", "Online Seconds"]] = device_availability["Online Duration (seconds)"].apply(
-    lambda x: pd.Series(split_duration(x))
-)
-device_availability[["Total Days", "Total Hours", "Total Minutes", "Total Seconds"]] = device_availability["Total Duration (seconds)"].apply(
-    lambda x: pd.Series(split_duration(x))
-)
 
 # แสดงผลลัพธ์ใน Streamlit
 #st.write("### Availability (%) ของแต่ละ Device")
