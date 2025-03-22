@@ -84,7 +84,7 @@ now = pd.Timestamp.now()
 #st.write(f"Start Date: {start_date}, Start Time: {start_time}")
 #st.write(f"End Date: {end_date}, End Time: {end_time}")
 
-
+""""""
 
 # ✅ **เพิ่ม State เริ่มต้น ถ้าจำเป็น**
 first_change_time = df["Field change time"].iloc[0]
