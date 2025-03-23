@@ -6,23 +6,24 @@ import plotly.express as px
 import datetime
 
 event_summary_path = "EventSummary_Jan2025.xlsx"
-skiprows = 7
+remote_path = "RemoteUnit.xlsx"
+skiprows_event = 7
+skiprows_remote = 4
 normal_state = "Online"
 abnormal_states = ["Initializing", "Telemetry Failure", "Connecting"]
 
 def load_data(uploaded_file,rows):
     #if uploaded_file is not None:
     df = pd.read_excel(uploaded_file, skiprows=rows)
-    df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
-    df = df.drop(columns=["#"])
     return df
-    #return None
 
 def filter_data(df, start_date, end_date, selected_device):
     if selected_device != "ทั้งหมด":
         df = df[df["Device"] == selected_device].reset_index(drop=True)
     else:
         df = df
+    df = df.drop(columns=["#"])
+    df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
     df_filtered = df[(df['Field change time'].between(start_date, end_date))]
     #df_filtered['Adjusted Duration (seconds)'] = df_filtered['Adjusted Duration (seconds)'].fillna(0)
     df_filtered= df_filtered[['Field change time', 'Message', 'Device', 'Alias']]
@@ -295,36 +296,28 @@ def evaluate(df):
 # แสดงผล
 #st.write("### Availability (%), จำนวนครั้ง, ระยะเวลาของ State ที่ผิดปกติ แยกตาม Device")
 #st.dataframe(merged_df)
-
-
-
+st.write(device_availability)
 
 if __name__ == "__main__":
-    # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
-    st.sidebar.header("เลือกช่วงเวลา")
-    df = load_data(event_summary_path,skiprows)
+    df = load_data(event_summary_path,skiprows_event)  
     if df is not None:
-        # เลือกวันที่ เวลา
-        start_date = st.sidebar.date_input("Start Date", df['Field change time'].min().date(), key="start_date")
-        end_date = st.sidebar.date_input("End Date", df['Field change time'].max().date(), key="end_date")
-        start_time = st.sidebar.text_input("Start Time", df["Field change time"].min().strftime("%H:%M:%S"), key="start_time")
-        end_time = st.sidebar.text_input("End Time", df['Field change time'].max().strftime("%H:%M:%S"), key="end_time")
-        # แปลงเป็น datetime.time()
-        try:
-            start_time = pd.to_datetime(start_time, format="%H:%M:%S").time()
-            end_time = pd.to_datetime(end_time, format="%H:%M:%S").time()
-        except ValueError:
-            st.error("❌ Invalid Time Format! Please use HH:MM:SS")
-        start_date = pd.Timestamp.combine(start_date, start_time)
-        end_date = pd.Timestamp.combine(end_date, end_time)
-        device_options = ["ทั้งหมด"] + list(df["Device"].unique())
-        selected_device = st.sidebar.selectbox("เลือก Device", device_options, index=0)
-        #start_date = st.sidebar.date_input("เลือกวันที่เริ่มต้น", value=datetime.date(2025, 1, 1), key="start_date")
-        #start_time = st.sidebar.time_input("เลือกเวลาที่เริ่มต้น", value=datetime.time(0, 0, 0), key="start_time")
-        #end_date = st.sidebar.date_input("เลือกวันที่สิ้นสุด", value=now.date(), key="end_date")
-        #end_time = st.sidebar.time_input("เลือกเวลาที่สิ้นสุด", value=datetime.time(0, 0, 0), key="end_time")
-        #start_time = pd.Timestamp.combine(start_date, start_time)
-        #end_time = pd.Timestamp.combine(end_date, end_time)
+        with st.sidebar:
+            # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
+            st.sidebar.header("เลือกช่วงเวลา")
+            start_date = st.sidebar.date_input("Start Date", df['Field change time'].min().date(), key="start_date")
+            end_date = st.sidebar.date_input("End Date", df['Field change time'].max().date(), key="end_date")
+            start_time = st.sidebar.text_input("Start Time", df["Field change time"].min().strftime("%H:%M:%S"), key="start_time")
+            end_time = st.sidebar.text_input("End Time", df['Field change time'].max().strftime("%H:%M:%S"), key="end_time")
+            # แปลงเป็น datetime.time()
+            try:
+                start_time = pd.to_datetime(start_time, format="%H:%M:%S").time()
+                end_time = pd.to_datetime(end_time, format="%H:%M:%S").time()
+            except ValueError:
+                st.error("❌ Invalid Time Format! Please use HH:MM:SS")
+            start_date = pd.Timestamp.combine(start_date, start_time)
+            end_date = pd.Timestamp.combine(end_date, end_time)
+            device_options = ["ทั้งหมด"] + list(df["Device"].unique())
+            selected_device = st.sidebar.selectbox("เลือก Device", device_options, index=0)
 
         df_filtered = filter_data(df, start_date, end_date, selected_device)
         df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
@@ -336,8 +329,9 @@ if __name__ == "__main__":
         st.write(device_count_duration)
         st.write(plot_availability)
         st.write(evaluate_availability)
-
     
-    
-
-
+    def get_device_availability():
+        return device_availability
+    #df_remote = load_data(remote_path,skiprows_remote)
+    #if df_remote is not None:
+    #st.write("Available attributes in test17:", dir())    
