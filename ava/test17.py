@@ -296,7 +296,6 @@ def evaluate(df):
 # แสดงผล
 #st.write("### Availability (%), จำนวนครั้ง, ระยะเวลาของ State ที่ผิดปกติ แยกตาม Device")
 #st.dataframe(merged_df)
-st.write(device_availability)
 
 if __name__ == "__main__":
     df = load_data(event_summary_path,skiprows_event)  
@@ -329,9 +328,7 @@ if __name__ == "__main__":
         st.write(device_count_duration)
         st.write(plot_availability)
         st.write(evaluate_availability)
-    
-    def get_device_availability():
-        return device_availability
+
     #df_remote = load_data(remote_path,skiprows_remote)
     #if df_remote is not None:
     #st.write("Available attributes in test17:", dir())    
