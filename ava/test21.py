@@ -343,7 +343,6 @@ if __name__ == "__main__":
         device_availability = calculate_device_availability(df_filtered)
         device_count_duration = calculate_device_count(df_filtered)
         plot_availability = plot(device_count_duration)
-        st.write(plot_availability)
         evaluate_availability= evaluate(device_count_duration)
         #display(device_count_duration,plot_availability,evaluate_availability) # ✅ **แสดงผลลัพธ์ใน Streamlit**
     if df_remote is not None:
