@@ -11,7 +11,7 @@ skiprows_event = 7
 skiprows_remote = 4
 normal_state = "Online"
 abnormal_states = ["Initializing", "Telemetry Failure", "Connecting"]
-
+    
 def load_data(file_path,rows):
     try:
         df = pd.read_excel(file_path, skiprows=rows)
@@ -195,17 +195,18 @@ def plot(df):
     labels = [f"{bins[i]}-{bins[i+1]}" for i in range(len(bins)-1)]  # ["0-10", "10-20", ..., "90-100"]
     # จัดกลุ่มข้อมูล Availability (%) ตามช่วงที่กำหนด
     df = df.copy()  # ป้องกัน SettingWithCopyWarning
-    df.loc[:, "Availability Range"] = pd.cut(df["Availability (%)"], bins=bins, labels=labels, right=False)
-
+    df.loc[:, "Availability Range"] = pd.cut(df["Availability (%)"], bins=bins, labels=labels, right=True, include_lowest=True)
+    st.write(df)
     # นับจำนวน Device ในแต่ละช่วง Availability (%)
     availability_counts = df["Availability Range"].value_counts().reindex(labels, fill_value=0).reset_index()
     availability_counts.columns = ["Availability Range", "Device Count"]
+    total_device_count = availability_counts["Device Count"].sum()
     # สร้าง Histogram โดยใช้ px.bar() เพื่อควบคุม bin edges ได้ตรง
     fig = px.bar(
         availability_counts,
         x="Availability Range",
         y="Device Count",
-        title="จำนวน Device ในแต่ละช่วง Availability (%)",
+        title=f"Plot จำนวน {total_device_count} Device ในแต่ละช่วง Availability (%)",
         labels={"Availability Range": "Availability (%)", "Device Count": "จำนวน Device"},
         text_auto=True  # แสดงค่าบนแท่งกราฟ
     )
@@ -214,7 +215,7 @@ def plot(df):
         xaxis_title="Availability (%)",
         yaxis_title="จำนวน Device",
         title_font_size=20,
-        xaxis_tickangle=-45,  # หมุนตัวอักษรแกน X
+        xaxis_tickangle=-45,  # หมุนตัวอักษรแกน X"
         bargap=0.005
     )
     return fig
@@ -316,7 +317,7 @@ def remote(df,device):
     return df_remote
 
 if __name__ == "__main__":
-    df = load_data(event_summary_path,skiprows_event)  
+    df = load_data(event_summary_path,skiprows_event)
     df_remote = load_data(remote_path,skiprows_remote)
     if df is not None:
         with st.sidebar:
@@ -342,12 +343,13 @@ if __name__ == "__main__":
         state_summary = calculate_state_summary(df_filtered)
         device_availability = calculate_device_availability(df_filtered)
         device_count_duration = calculate_device_count(df_filtered)
-        plot_availability = plot(device_count_duration)
-        st.write(plot_availability)
+        #plot_availability = plot(device_count_duration)
         evaluate_availability= evaluate(device_count_duration)
         #display(device_count_duration,plot_availability,evaluate_availability) # ✅ **แสดงผลลัพธ์ใน Streamlit**
     if df_remote is not None:
         remoteunit = remote(df_remote,device_count_duration)
-        plot_ava = plot(remoteunit)
-        st.write(remoteunit)
-        st.write(plot_ava)
+        #st.write(remoteunit)
+        #st.write("### Plot Remote")
+        #plot_ava = plot(remoteunit)
+        #st.write(plot_ava)
+        

@@ -266,44 +266,11 @@ def evaluate(df):
     )
     return fig
 
-<<<<<<< HEAD
-# โหลดข้อมูลจากไฟล์
-
-
-# ✅ **แสดงผลลัพธ์ใน Streamlit**
-#st.write(f"### ตาราง State จาก {start_time} ถึง {end_time}")
-#st.dataframe(df_filtered[["Device", "Field change time", "Previous State", "New State", "Adjusted Start", "Adjusted End", "Days", "Hours", "Minutes", "Seconds", "Formatted Duration"]])
-#st.write(f"### สรุปเวลารวมของแต่ละ State ของ Device : {selected_device}")
-#st.dataframe(state_duration_summary[["State", "Days", "Hours", "Minutes", "Seconds", "Formatted Duration"]]
-
-# ✅ **แสดงผล**
-#st.write(df_filtered)
-#st.write(state_duration_summary)
-#st.write(f"### ค่า Availability ของระบบ: {availability:.4f}%")
-#st.write(f"### เวลาที่ทำงานผิดปกติ: {faulty_percentage:.2f}%")
-#st.write("### ค่า Availability (%) ของแต่ละ State")
-#st.dataframe(state_duration_summary[["State", "Days", "Hours", "Minutes", "Seconds", "Formatted Duration", "Availability (%)"]])
-
-# แสดงผลลัพธ์ใน Streamlit
-#st.write("### Availability (%) ของแต่ละ Device")
-#st.dataframe(device_availability[["Device", "Availability (%)", "Online Days", "Online Hours", "Online Minutes", "Online Seconds","Total Days", "Total Hours", "Total Minutes", "Total Seconds"]])
-
-
-
-# แสดงผลใน Streamlit
-#st.write("### สรุปจำนวนครั้งและระยะเวลาของ State ผิดปกติ แยกตาม Device")
-#st.dataframe(summary_df)
-
-# แสดงผล
-#st.write("### Availability (%), จำนวนครั้ง, ระยะเวลาของ State ที่ผิดปกติ แยกตาม Device")
-#st.dataframe(merged_df)
-=======
 def display(ava,plot,eva):
     st.write("### Availability (%), จำนวนครั้ง, ระยะเวลา แยกตาม Device") #merged_df #device_availability % #
     st.write(device_count_duration)
     st.write(plot_availability)
     st.write(evaluate_availability)
->>>>>>> 158bcb5485711eca8e477698eb7a97672f72b8e2
 
 if __name__ == "__main__":
     df = load_data(event_summary_path,skiprows_event)  
@@ -336,15 +303,5 @@ if __name__ == "__main__":
         device_count_duration = calculate_device_count(df_filtered)
         plot_availability = plot(device_count_duration)
         evaluate_availability= evaluate(device_count_duration)
-<<<<<<< HEAD
-        st.write(device_count_duration)
-        st.write(plot_availability)
-        st.write(evaluate_availability)
-
-    #df_remote = load_data(remote_path,skiprows_remote)
-    #if df_remote is not None:
-    #st.write("Available attributes in test17:", dir())    
-=======
         display(device_count_duration,plot_availability,evaluate_availability) # ✅ **แสดงผลลัพธ์ใน Streamlit**
         
->>>>>>> 158bcb5485711eca8e477698eb7a97672f72b8e2
