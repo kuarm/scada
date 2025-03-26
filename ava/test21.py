@@ -295,11 +295,24 @@ def remote(df,device):
     columns_to_keep_remote = ["Name", "State", "Description"] + new_columns
     df_remote = df_remote[columns_to_keep_remote]
     df_remote.rename(columns={"Name": "Device"}, inplace=True)
-
+    
     # ✅ **อัพเดตค่า Availability (%) และ Device Count ใน df_remote**
-    df_remote = df_remote.merge(device, on="Device", suffixes=("_old", ""))
+    df_remote = df_remote.merge(device, on="Device", how="outer", suffixes=("_old", ""))
+
     # ลบคอลัมน์เก่าที่ไม่ต้องการออก
     df_remote.drop(columns=[col for col in df_remote.columns if col.endswith("_old")], inplace=True)
+    df_remote = df_remote.fillna({
+        "Availability (%)": 100.00,
+        "จำนวนครั้ง Initializing": 0,
+        "ระยะเวลา Initializing (seconds)": 0,
+        "จำนวนครั้ง Telemetry Failure": 0,
+        "ระยะเวลา Telemetry Failure (seconds)": 0,
+        "จำนวนครั้ง Connecting": 0,
+        "ระยะเวลา Connecting (seconds)": 0,
+        "เกณฑ์การประเมิน": "90 < Availability (%) <= 100",
+        "ผลการประเมิน": "✅ ไม่แฮงค์",
+        "Availability Range": "90 < Availability (%) <= 100"
+    })
     return df_remote
 
 if __name__ == "__main__":
@@ -324,15 +337,17 @@ if __name__ == "__main__":
             end_date = pd.Timestamp.combine(end_date, end_time)
             device_options = ["ทั้งหมด"] + list(df["Device"].unique())
             selected_device = st.sidebar.selectbox("เลือก Device", device_options, index=0)
-            st.write(df['Field change time'].min().date())
         df_filtered = filter_data(df, start_date, end_date, selected_device)
         df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
         state_summary = calculate_state_summary(df_filtered)
         device_availability = calculate_device_availability(df_filtered)
         device_count_duration = calculate_device_count(df_filtered)
         plot_availability = plot(device_count_duration)
+        st.write(plot_availability)
         evaluate_availability= evaluate(device_count_duration)
         #display(device_count_duration,plot_availability,evaluate_availability) # ✅ **แสดงผลลัพธ์ใน Streamlit**
     if df_remote is not None:
         remoteunit = remote(df_remote,device_count_duration)
+        plot_ava = plot(remoteunit)
         st.write(remoteunit)
+        st.write(plot_ava)
