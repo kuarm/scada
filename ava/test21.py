@@ -4,22 +4,38 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import datetime
+import chardet
+import os
 
-event_summary_path = "EventSummary_Jan2025.xlsx"
+event_summary_path = r".\source_csv\combined_output.csv"
+input_folder = r"D:\Develop\scada\ava\source_csv"
 remote_path = "RemoteUnit.xlsx"
-skiprows_event = 7
+skiprows_event = 0
 skiprows_remote = 4
 normal_state = "Online"
 abnormal_states = ["Initializing", "Telemetry Failure", "Connecting"]
-    
-def load_data(file_path,rows):
-    try:
-        df = pd.read_excel(file_path, skiprows=rows)
-        return df
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการโหลดไฟล์: {e}")
-        return None
 
+@st.cache_data
+def load_data_csv(file_path,rows):
+    # หาไฟล์ CSV ด้วย os.scandir()
+    csv_files = [entry.path for entry in os.scandir(input_folder) if entry.is_file() and entry.name.endswith(".csv")]
+    for file_path in csv_files:
+        try:
+            chunks = pd.read_csv(file_path, skiprows=rows, chunksize=100000, usecols=["Field change time", "Message", "Device", "Alias"])  # ปรับ skiprows ตามต้องการ
+            
+            df = pd.concat(chunks, ignore_index=True)
+            if df.empty:
+                st.write(f"⚠️ ไฟล์ {file_path} ว่างเปล่า!")
+            else:
+                return df
+        except Exception as e:
+            st.write(f"❌ ไม่สามารถอ่านไฟล์ {file_path}: {e}")
+
+def load_data(uploaded_file,rows):
+    #if uploaded_file is not None:
+    df = pd.read_excel(uploaded_file, skiprows=rows)
+    return df
+  
 # ฟังก์ชันดึงค่า Previous State และ New State และลบจุดท้ายข้อความ
 def extract_states(message):
     # ตรวจสอบว่าข้อความเป็น "Remote Unit is now in expected state (Online)."
@@ -279,7 +295,8 @@ def display(ava,plot,eva):
 
 def remote(df,device):
     # กรองเฉพาะแถวที่คอลัมน์ "Substation" มีค่า "S1 FRTU"
-    df_remote = df[df["Substation"] == "S1 FRTU"]
+    #df_remote = df[df["Substation"] == "S1 FRTU"]
+    
     new_columns = [
         "Availability (%)",
         "จำนวนครั้ง Initializing",
@@ -290,11 +307,11 @@ def remote(df,device):
         "ระยะเวลา Connecting (seconds)"
     ]
     for col in new_columns:
-        df_remote[col] = 0  # กำหนดค่าเริ่มต้นเป็น 0 หรือ NaN ตามต้องการ
+        df[col] = 0  # กำหนดค่าเริ่มต้นเป็น 0 หรือ NaN ตามต้องการ
 
     # เลือกเฉพาะคอลัมน์ที่สนใจ
     columns_to_keep_remote = ["Name", "State", "Description"] + new_columns
-    df_remote = df_remote[columns_to_keep_remote]
+    df_remote = df[columns_to_keep_remote]
     df_remote.rename(columns={"Name": "Device"}, inplace=True)
     
     # ✅ **อัพเดตค่า Availability (%) และ Device Count ใน df_remote**
@@ -317,7 +334,8 @@ def remote(df,device):
     return df_remote
 
 if __name__ == "__main__":
-    df = load_data(event_summary_path,skiprows_event)
+    df = load_data_csv(event_summary_path,skiprows_event)
+    #st.write(df)
     df_remote = load_data(remote_path,skiprows_remote)
     if df is not None:
         with st.sidebar:
@@ -343,17 +361,14 @@ if __name__ == "__main__":
         state_summary = calculate_state_summary(df_filtered)
         device_availability = calculate_device_availability(df_filtered)
         device_count_duration = calculate_device_count(df_filtered)
-<<<<<<< HEAD
         plot_availability = plot(device_count_duration)
-=======
         #plot_availability = plot(device_count_duration)
->>>>>>> 1011ecfec7eaeb00331c523c24c83fe2cbe63a04
         evaluate_availability= evaluate(device_count_duration)
         #display(device_count_duration,plot_availability,evaluate_availability) # ✅ **แสดงผลลัพธ์ใน Streamlit**
     if df_remote is not None:
         remoteunit = remote(df_remote,device_count_duration)
         #st.write(remoteunit)
         #st.write("### Plot Remote")
-        #plot_ava = plot(remoteunit)
-        #st.write(plot_ava)
+        plot_ava = plot(remoteunit)
+        st.write(plot_ava)
         
