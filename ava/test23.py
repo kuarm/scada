@@ -7,8 +7,8 @@ import datetime
 import os
 
 # 🔹 กำหนดพาธ
-input_folder = r"D:\Develop\scada\ava\source_csv"
-output_file = r"D:\Develop\scada\ava\source_csv\combined_output.csv"
+input_folder = r".\csv_file_test"
+output_file = r".\csv_file_test\combined_output.csv"
 
 def combine_csv(input_folder, output_file):
     try:
