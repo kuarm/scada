@@ -4,24 +4,24 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import datetime
-import chardet
 import os
 
 event_summary_path = r".\source_csv\combined_output.csv"
-input_folder = r"D:\Develop\scada\ava\source_csv"
+input_folder = r".\source_csv"
 remote_path = "RemoteUnit.xlsx"
 skiprows_event = 0
 skiprows_remote = 4
 normal_state = "Online"
 abnormal_states = ["Initializing", "Telemetry Failure", "Connecting"]
 
-@st.cache_data
 def load_data_csv(file_path,rows):
     # หาไฟล์ CSV ด้วย os.scandir()
     csv_files = [entry.path for entry in os.scandir(input_folder) if entry.is_file() and entry.name.endswith(".csv")]
     for file_path in csv_files:
         try:
-            chunks = pd.read_csv(file_path, skiprows=rows, chunksize=100000, usecols=["Field change time", "Message", "Device", "Alias"])  # ปรับ skiprows ตามต้องการ
+            chunks = pd.read_csv(file_path, skiprows=rows, chunksize=100000, 
+                                 usecols=["Field change time", "Message", "Device"]
+                                 )  # ปรับ skiprows ตามต้องการ
             
             df = pd.concat(chunks, ignore_index=True)
             if df.empty:
@@ -52,9 +52,10 @@ def filter_data(df, start_date, end_date, selected_device):
     df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
     df = df.dropna(subset=["Field change time"])  # ลบแถวที่มี NaT ใน "Field change time"
     df_filtered = df[(df['Field change time'].between(start_date, end_date))]
-    df_filtered = df_filtered[['Field change time', 'Message', 'Device', 'Alias']].sort_values("Field change time").reset_index(drop=True)
+    df_filtered = df_filtered[['Field change time', 'Message', 'Device']].sort_values("Field change time") #.reset_index(drop=True)
     #df_filtered['Adjusted Duration (seconds)'] = df_filtered['Adjusted Duration (seconds)'].fillna(0)
-    df_filtered[["Previous State", "New State"]] = df_filtered["Message"].apply(lambda x: pd.Series(extract_states(x))) # ใช้ฟังก์ชันในการแยก Previous State และ New State
+    #df_filtered[["Previous State", "New State"]] = df_filtered["Message"].apply(lambda x: pd.Series(extract_states(x))) # ใช้ฟังก์ชันในการแยก Previous State และ New State
+    df_filtered['Previous State'], df_filtered['New State'] = zip(*df_filtered['Message'].apply(extract_states))
     df_filtered= df_filtered.dropna(subset=["Previous State", "New State"]).reset_index(drop=True) # ลบแถวที่ไม่มีข้อมูล
     return df_filtered
 
@@ -127,9 +128,10 @@ def format_duration(row):
         parts.append(f"{row['Seconds']} วินาที")
     return " ".join(parts) if parts else "0 วินาที"
 
+@st.cache_data
 def calculate_state_summary(df_filtered):
     # ✅ **สรุปผลรวมเวลาแต่ละ State**
-    state_duration_summary = df_filtered.groupby("New State", dropna=True)["Adjusted Duration (seconds)"].sum().reset_index()
+    state_duration_summary = df_filtered.groupby("New State", dropna=True)["Adjusted Duration (seconds)"].sum()
     state_duration_summary[["Days", "Hours", "Minutes", "Seconds"]] = state_duration_summary["Adjusted Duration (seconds)"].apply(
         lambda x: pd.Series(split_duration(x)))
     state_duration_summary["Formatted Duration"] = state_duration_summary.apply(format_duration, axis=1)
@@ -148,6 +150,7 @@ def calculate_state_summary(df_filtered):
         abnormal_percentage = 0
         state_duration_summary["Availability (%)"] = 0 
     return state_duration_summary
+
 
 def calculate_device_availability(df_filtered):
     # ✅ **คำนวณ Availability (%) ของแต่ละ Device**
@@ -168,6 +171,7 @@ def calculate_device_availability(df_filtered):
         lambda x: pd.Series(split_duration(x)))
     return device_availability
 
+@st.cache_data
 def calculate_device_count(df_filtered):
     # ✅ **จำนวนครั้งที่เกิด State ต่างๆ ของแต่ละ Device**
     device_availability = calculate_device_availability(df_filtered)  # เพิ่มการคำนวณก่อนใช้งาน
@@ -369,6 +373,6 @@ if __name__ == "__main__":
         remoteunit = remote(df_remote,device_count_duration)
         #st.write(remoteunit)
         #st.write("### Plot Remote")
-        plot_ava = plot(remoteunit)
-        st.write(plot_ava)
+        #plot_ava = plot(remoteunit)
+        #st.write(plot_ava)
         
