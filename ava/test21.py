@@ -17,6 +17,12 @@ skiprows_remote = 4
 normal_state = "Online"
 abnormal_states = ["Initializing", "Telemetry Failure", "Connecting"]
 
+
+# Set page
+st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="wide", initial_sidebar_state="expanded", menu_items=None)
+with open('./css/style.css')as f:
+    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
+    
 def load_data_csv(file_path,rows):
     # หาไฟล์ CSV ด้วย os.scandir()
     csv_files = [entry.path for entry in os.scandir(input_folder) if entry.is_file() and entry.name.endswith(".csv")]
@@ -134,7 +140,7 @@ def format_duration(row):
 @st.cache_data
 def calculate_state_summary(df_filtered):
     # ✅ **สรุปผลรวมเวลาแต่ละ State**
-    state_duration_summary = df_filtered.groupby("New State", dropna=True)["Adjusted Duration (seconds)"].sum()
+    state_duration_summary = df_filtered.groupby("New State", dropna=True)["Adjusted Duration (seconds)"].sum().reset_index()
     state_duration_summary[["Days", "Hours", "Minutes", "Seconds"]] = state_duration_summary["Adjusted Duration (seconds)"].apply(
         lambda x: pd.Series(split_duration(x)))
     state_duration_summary["Formatted Duration"] = state_duration_summary.apply(format_duration, axis=1)
@@ -340,11 +346,13 @@ def remote(df,device):
     })
     return df_remote
 
+
+    
 if __name__ == "__main__":
     df = load_data_csv(event_summary_path,skiprows_event)
     #st.write(df)
     df_remote = load_data(remote_path,skiprows_remote)
-    if df is not None:
+    if df_remote is not None and not df_remote.empty and df is not None and not df.empty:
         with st.sidebar:
             # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
             st.sidebar.header("เลือกช่วงเวลา")
@@ -361,9 +369,11 @@ if __name__ == "__main__":
                 st.error("❌ Invalid Time Format! Please use HH:MM:SS")
             start_date = pd.Timestamp.combine(start_date, start_time)
             end_date = pd.Timestamp.combine(end_date, end_time)
+            st.sidebar.header("เลือกอุปกรณ์")
             device_options = ["ทั้งหมด"] + list(df["Device"].unique())
             selected_device = st.sidebar.selectbox("เลือก Device", device_options, index=0)
-        df_filtered = filter_data(df, start_date, end_date, selected_device)
+            df_filtered = filter_data(df, start_date, end_date, selected_device)
+        
         df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
         state_summary = calculate_state_summary(df_filtered)
         device_availability = calculate_device_availability(df_filtered)
@@ -372,7 +382,7 @@ if __name__ == "__main__":
         #plot_availability = plot(device_count_duration)
         evaluate_availability= evaluate(device_count_duration)
         #display(device_count_duration,plot_availability,evaluate_availability) # ✅ **แสดงผลลัพธ์ใน Streamlit**
-    if df_remote is not None:
+        
         remoteunit = remote(df_remote,device_count_duration)
         #st.write(remoteunit)
         #st.write("### Plot Remote")
