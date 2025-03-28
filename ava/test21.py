@@ -7,8 +7,8 @@ import datetime
 import chardet
 import os
 
-event_summary_path = r".\source_csv\combined_output.csv"
-input_folder = r"D:\Develop\scada\ava\source_csv"
+event_summary_path = r".\csv_file_test\combined_output.csv"
+input_folder = r".\csv_file_test"
 remote_path = "RemoteUnit.xlsx"
 skiprows_event = 0
 skiprows_remote = 4
