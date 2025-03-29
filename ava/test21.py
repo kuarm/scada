@@ -6,8 +6,10 @@ import plotly.express as px
 import datetime
 import os
 
-event_summary_path = r".\source_csv\combined_output.csv"
-input_folder = r".\source_csv"
+#event_summary_path = "./source_csv/combined_output.csv"
+event_summary_path = "/Users/theoldman/Documents/Develop/scada/ava/source_csv/combined_output.csv"
+#input_folder = "./source_csv"
+input_folder = "/Users/theoldman/Documents/Develop/scada/ava/source_csv/"
 #event_summary_path = r".\csv_file_test\combined_output.csv"
 #input_folder = r".\csv_file_test"
 
@@ -24,14 +26,12 @@ with open('./css/style.css')as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
     
 def load_data_csv(file_path,rows):
+    cols=["Field change time", "Message", "Device"]
     # หาไฟล์ CSV ด้วย os.scandir()
     csv_files = [entry.path for entry in os.scandir(input_folder) if entry.is_file() and entry.name.endswith(".csv")]
     for file_path in csv_files:
         try:
-            chunks = pd.read_csv(file_path, skiprows=rows, chunksize=100000, 
-                                 usecols=["Field change time", "Message", "Device"]
-                                 )  # ปรับ skiprows ตามต้องการ
-            
+            chunks = pd.read_csv(file_path, skiprows=rows, chunksize=100000, usecols=cols, encoding="utf-8")
             df = pd.concat(chunks, ignore_index=True)
             if df.empty:
                 st.write(f"⚠️ ไฟล์ {file_path} ว่างเปล่า!")
@@ -44,8 +44,16 @@ def load_data(uploaded_file,rows):
     #if uploaded_file is not None:
     df = pd.read_excel(uploaded_file, skiprows=rows)
     df = df[df["Substation"] == "S1 FRTU"]
+    # เลือกเฉพาะคอลัมน์ที่สนใจ
+    columns_to_keep_remote = ["Name", "State", "Description"]
+    df = df[columns_to_keep_remote]
+    df.rename(columns={"Name": "Device"}, inplace=True)
     return df
-  
+
+def merge_data(df1,df2):
+    df_filters = df1.merge(df2, on="Device", how="outer", suffixes=("_old", ""))
+    return df_filters
+
 # ฟังก์ชันดึงค่า Previous State และ New State และลบจุดท้ายข้อความ
 def extract_states(message):
     # ตรวจสอบว่าข้อความเป็น "Remote Unit is now in expected state (Online)."
@@ -135,7 +143,7 @@ def format_duration(row):
         parts.append(f"{row['Seconds']} วินาที")
     return " ".join(parts) if parts else "0 วินาที"
 
-@st.cache_data
+@st.cache
 def calculate_state_summary(df_filtered):
     # ✅ **สรุปผลรวมเวลาแต่ละ State**
     state_duration_summary = df_filtered.groupby("New State", dropna=True)["Adjusted Duration (seconds)"].sum().reset_index()
@@ -177,8 +185,9 @@ def calculate_device_availability(df_filtered):
         lambda x: pd.Series(split_duration(x)))
     return device_availability
 
-@st.cache_data
+@st.cache
 def calculate_device_count(df_filtered):
+    st.write(df_filtered)
     # ✅ **จำนวนครั้งที่เกิด State ต่างๆ ของแต่ละ Device**
     device_availability = calculate_device_availability(df_filtered)  # เพิ่มการคำนวณก่อนใช้งาน
     # คำนวณจำนวนครั้งของแต่ละ State
@@ -212,6 +221,7 @@ def calculate_device_count(df_filtered):
         "Connecting Count": "จำนวนครั้ง Connecting",
         "Connecting Duration (seconds)": "ระยะเวลา Connecting (seconds)"
     })
+    st.write(merged_df)
     return merged_df
 
 def plot(df):
@@ -302,7 +312,7 @@ def display(ava,plot,eva):
     st.write(plot)
     st.write(eva)
 
-def remote(df,device):
+def remote(df_filters):
     new_columns = [
         "Availability (%)",
         "จำนวนครั้ง Initializing",
@@ -312,20 +322,11 @@ def remote(df,device):
         "จำนวนครั้ง Connecting",
         "ระยะเวลา Connecting (seconds)"
     ]
-    for col in new_columns:
-        df[col] = 0  # กำหนดค่าเริ่มต้นเป็น 0 หรือ NaN ตามต้องการ
-
-    # เลือกเฉพาะคอลัมน์ที่สนใจ
-    columns_to_keep_remote = ["Name", "State", "Description"] + new_columns
-    df_remote = df[columns_to_keep_remote]
-    df_remote.rename(columns={"Name": "Device"}, inplace=True)
     
-    # ✅ **อัพเดตค่า Availability (%) และ Device Count ใน df_remote**
-    df_remote = df_remote.merge(device, on="Device", how="outer", suffixes=("_old", ""))
-
     # ลบคอลัมน์เก่าที่ไม่ต้องการออก
-    df_remote.drop(columns=[col for col in df_remote.columns if col.endswith("_old")], inplace=True)
-    df_remote = df_remote.fillna({
+    #df_remote.drop(columns=[col for col in df_remote.columns if col.endswith("_old")], inplace=True)
+    
+    df_remote = df_filters.fillna({
         "Availability (%)": 100.00,
         "จำนวนครั้ง Initializing": 0,
         "ระยะเวลา Initializing (seconds)": 0,
@@ -344,19 +345,21 @@ def main():
     st.markdown("---------")
     df = load_data_csv(event_summary_path,skiprows_event)
     #st.write(df)
+    
     df_remote = load_data(remote_path,skiprows_remote)
-    if df_remote is not None and not df_remote.empty and df is not None and not df.empty:
+    df_merge = merge_data(df_remote,df)
+    if df_merge is not None and not df_merge.empty:
         col1, col2, col3, col4 = st.columns(4)
         
         with st.sidebar:
             # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
             st.sidebar.header("เลือกช่วงเวลา")
             # แปลงเป็น datetime.time()
-            df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
-            start_date = st.date_input("Start Date", df['Field change time'].min().date(), key="start_date")
-            end_date = st.date_input("End Date", df['Field change time'].max().date(), key="end_date")
-            start_time = st.text_input("Start Time", df["Field change time"].min().strftime("%H:%M:%S"), key="start_time")
-            end_time = st.text_input("End Time", df['Field change time'].max().strftime("%H:%M:%S"), key="end_time")
+            df_merge["Field change time"] = pd.to_datetime(df_merge["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
+            start_date = st.date_input("Start Date", df_merge['Field change time'].min().date(), key="start_date")
+            end_date = st.date_input("End Date", df_merge['Field change time'].max().date(), key="end_date")
+            start_time = st.text_input("Start Time", df_merge["Field change time"].min().strftime("%H:%M:%S"), key="start_time")
+            end_time = st.text_input("End Time", df_merge['Field change time'].max().strftime("%H:%M:%S"), key="end_time")
             try:
                 start_time = pd.to_datetime(start_time, format="%H:%M:%S").time()
                 end_time = pd.to_datetime(end_time, format="%H:%M:%S").time()
@@ -366,14 +369,14 @@ def main():
             end_date = pd.Timestamp.combine(end_date, end_time)
             st.markdown("---------")
             st.header("เลือกอุปกรณ์")
-            device_options = ["ทั้งหมด"] + list(df_remote["Name"].unique())
+            device_options = ["ทั้งหมด"] + list(df_merge["Device"].unique())
             # ใช้ multiselect และให้ค่าเริ่มต้นเป็น "ทั้งหมด"
             selected_devices = st.multiselect("เลือก Device", options=device_options, default=["ทั้งหมด"])
             # ตรวจสอบว่าเลือก "ทั้งหมด" หรือไม่
             if not selected_devices or "ทั้งหมด" in selected_devices:
-                df_filtered = df.copy()  # แสดงข้อมูลทั้งหมด
+                df_filtered = df_merge.copy()  # แสดงข้อมูลทั้งหมด
             else:
-                df_filtered = df[df["Device"].isin(selected_devices)]  # กรองเฉพาะที่เลือก
+                df_filtered = df_merge[df_merge["Device"].isin(selected_devices)]  # กรองเฉพาะที่เลือก
 
             #selected_device = st.selectbox("เลือก Device", device_options, index=0)
             df_filtered = filter_data(df_filtered, start_date, end_date)
@@ -388,11 +391,11 @@ def main():
         state_summary = calculate_state_summary(df_filtered)
         device_availability = calculate_device_availability(df_filtered)
         device_count_duration = calculate_device_count(df_filtered)
+        #st.write(device_count_duration)
         plot_availability = plot(device_count_duration)
         evaluate_availability= evaluate(device_count_duration)
-        st.write(device_count_duration)
-        remoteunit = remote(df_remote,device_count_duration)
-        st.write(remoteunit)
+        remoteunit = remote(device_count_duration)
+        #st.write(remoteunit)
         #display(device_count_duration,plot_availability,evaluate_availability,plot_availability,evaluate_availability,remoteunit)
         
 if __name__ == "__main__":
