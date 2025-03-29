@@ -8,8 +8,8 @@ import os
 
 event_summary_path = r".\source_csv\combined_output.csv"
 input_folder = r".\source_csv"
-event_summary_path = r".\csv_file_test\combined_output.csv"
-input_folder = r".\csv_file_test"
+#event_summary_path = r".\csv_file_test\combined_output.csv"
+#input_folder = r".\csv_file_test"
 
 remote_path = "RemoteUnit.xlsx"
 skiprows_event = 0
@@ -43,6 +43,7 @@ def load_data_csv(file_path,rows):
 def load_data(uploaded_file,rows):
     #if uploaded_file is not None:
     df = pd.read_excel(uploaded_file, skiprows=rows)
+    df = df[df["Substation"] == "S1 FRTU"]
     return df
   
 # ฟังก์ชันดึงค่า Previous State และ New State และลบจุดท้ายข้อความ
@@ -53,10 +54,7 @@ def extract_states(message):
     match = re.search(r"Remote unit state changed from (.+?) to (.+)", str(message))
     return (match.group(1), match.group(2).strip(".")) if match else (None, None)
 
-def filter_data(df, start_date, end_date, selected_device):
-    if selected_device != "ทั้งหมด":
-        df = df[df["Device"] == selected_device].reset_index(drop=True)
-
+def filter_data(df, start_date, end_date):
     df = df.drop(columns=["#"], errors="ignore")
     df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
     df = df.dropna(subset=["Field change time"])  # ลบแถวที่มี NaT ใน "Field change time"
@@ -160,7 +158,6 @@ def calculate_state_summary(df_filtered):
         state_duration_summary["Availability (%)"] = 0 
     return state_duration_summary
 
-
 def calculate_device_availability(df_filtered):
     # ✅ **คำนวณ Availability (%) ของแต่ละ Device**
     # คำนวณเวลารวมของแต่ละ Device
@@ -225,7 +222,6 @@ def plot(df):
     # จัดกลุ่มข้อมูล Availability (%) ตามช่วงที่กำหนด
     df = df.copy()  # ป้องกัน SettingWithCopyWarning
     df.loc[:, "Availability Range"] = pd.cut(df["Availability (%)"], bins=bins, labels=labels, right=True, include_lowest=True)
-    st.write(df)
     # นับจำนวน Device ในแต่ละช่วง Availability (%)
     availability_counts = df["Availability Range"].value_counts().reindex(labels, fill_value=0).reset_index()
     availability_counts.columns = ["Availability Range", "Device Count"]
@@ -307,9 +303,6 @@ def display(ava,plot,eva):
     st.write(eva)
 
 def remote(df,device):
-    # กรองเฉพาะแถวที่คอลัมน์ "Substation" มีค่า "S1 FRTU"
-    #df_remote = df[df["Substation"] == "S1 FRTU"]
-    
     new_columns = [
         "Availability (%)",
         "จำนวนครั้ง Initializing",
@@ -346,22 +339,24 @@ def remote(df,device):
     })
     return df_remote
 
-
-    
-if __name__ == "__main__":
+def main():
+    st.title("📊 สถานะอุปกรณ์บนระบบ SCADA")
+    st.markdown("---------")
     df = load_data_csv(event_summary_path,skiprows_event)
     #st.write(df)
     df_remote = load_data(remote_path,skiprows_remote)
     if df_remote is not None and not df_remote.empty and df is not None and not df.empty:
+        col1, col2, col3, col4 = st.columns(4)
+        
         with st.sidebar:
             # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
             st.sidebar.header("เลือกช่วงเวลา")
             # แปลงเป็น datetime.time()
             df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
-            start_date = st.sidebar.date_input("Start Date", df['Field change time'].min().date(), key="start_date")
-            end_date = st.sidebar.date_input("End Date", df['Field change time'].max().date(), key="end_date")
-            start_time = st.sidebar.text_input("Start Time", df["Field change time"].min().strftime("%H:%M:%S"), key="start_time")
-            end_time = st.sidebar.text_input("End Time", df['Field change time'].max().strftime("%H:%M:%S"), key="end_time")
+            start_date = st.date_input("Start Date", df['Field change time'].min().date(), key="start_date")
+            end_date = st.date_input("End Date", df['Field change time'].max().date(), key="end_date")
+            start_time = st.text_input("Start Time", df["Field change time"].min().strftime("%H:%M:%S"), key="start_time")
+            end_time = st.text_input("End Time", df['Field change time'].max().strftime("%H:%M:%S"), key="end_time")
             try:
                 start_time = pd.to_datetime(start_time, format="%H:%M:%S").time()
                 end_time = pd.to_datetime(end_time, format="%H:%M:%S").time()
@@ -369,21 +364,42 @@ if __name__ == "__main__":
                 st.error("❌ Invalid Time Format! Please use HH:MM:SS")
             start_date = pd.Timestamp.combine(start_date, start_time)
             end_date = pd.Timestamp.combine(end_date, end_time)
-            st.sidebar.header("เลือกอุปกรณ์")
-            device_options = ["ทั้งหมด"] + list(df["Device"].unique())
-            selected_device = st.sidebar.selectbox("เลือก Device", device_options, index=0)
-            df_filtered = filter_data(df, start_date, end_date, selected_device)
-        
+            st.markdown("---------")
+            st.header("เลือกอุปกรณ์")
+            device_options = ["ทั้งหมด"] + list(df_remote["Name"].unique())
+            # ใช้ multiselect และให้ค่าเริ่มต้นเป็น "ทั้งหมด"
+            selected_devices = st.multiselect("เลือก Device", options=device_options, default=["ทั้งหมด"])
+            # ตรวจสอบว่าเลือก "ทั้งหมด" หรือไม่
+            if not selected_devices or "ทั้งหมด" in selected_devices:
+                df_filtered = df.copy()  # แสดงข้อมูลทั้งหมด
+            else:
+                df_filtered = df[df["Device"].isin(selected_devices)]  # กรองเฉพาะที่เลือก
+
+            #selected_device = st.selectbox("เลือก Device", device_options, index=0)
+            df_filtered = filter_data(df_filtered, start_date, end_date)
+            st.sidebar.markdown("---------")
+            option_funct = ['%Avaiability']
+            cols_select = ['State', 'Description', 'สถานที่', 'การไฟฟ้า', 'ประเภทอุปกรณ์', 'จุดติดตั้ง', 'Master', 'โครงการติดตั้ง']
+            st.header("Functions:")
+            funct_select = st.radio(label="", options = option_funct)
+            st.markdown("---------")
+
         df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
         state_summary = calculate_state_summary(df_filtered)
         device_availability = calculate_device_availability(df_filtered)
         device_count_duration = calculate_device_count(df_filtered)
         plot_availability = plot(device_count_duration)
-        #plot_availability = plot(device_count_duration)
         evaluate_availability= evaluate(device_count_duration)
-        #display(device_count_duration,plot_availability,evaluate_availability) # ✅ **แสดงผลลัพธ์ใน Streamlit**
-        
+        st.write(device_count_duration)
         remoteunit = remote(df_remote,device_count_duration)
+        st.write(remoteunit)
+        #display(device_count_duration,plot_availability,evaluate_availability,plot_availability,evaluate_availability,remoteunit)
+        
+if __name__ == "__main__":
+    main()
+        
+    
+    
         #st.write(remoteunit)
         #st.write("### Plot Remote")
         #plot_ava = plot(remoteunit)
