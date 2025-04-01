@@ -19,6 +19,8 @@ skiprows_remote = 4
 normal_state = "Online"
 abnormal_states = ["Initializing", "Telemetry Failure", "Connecting"]
 
+
+        
 # Set page
 st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="wide", initial_sidebar_state="expanded", menu_items=None)
 with open('./css/style.css')as f:
@@ -330,21 +332,24 @@ def main():
     st.markdown("---------")
     df = load_data_csv(event_summary_path,skiprows_event)
     df_remote = load_data(remote_path,skiprows_remote)
+    df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
     
-
-    # กำหนดค่าเริ่มต้นให้ session_state
-    if "selected_device" not in st.session_state:
+        # กำหนดค่าเริ่มต้นให้ session_state
+    if "selected_devices" not in st.session_state:
         st.session_state.selected_devices = "ทั้งหมด"
     if "start_date" not in st.session_state:
         st.session_state.start_date = df["Field change time"].min().date()
-        #st.session_state.start_date = pd.to_datetime("2024-01-01").date()
+        #st.session_state.start_date = pd.to_datetime("01/01/2024").date()
     if "end_date" not in st.session_state:
         st.session_state.end_date = df["Field change time"].max().date()
-        #st.session_state.end_date = pd.to_datetime("2024-03-01").date()
+        #st.session_state.end_date = pd.to_datetime("31/12/2024").date()
     if "start_time" not in st.session_state:
-        st.session_state.start_time = df["Field change time"].min().strftime("%H:%M:%S")
+        #st.session_state.start_time = df["Field change time"].min().strftime("%H:%M:%S")
+        st.session_state.end_date = pd.to_datetime("00:00:00").strftime("%H:%M:%S")
     if "end_time" not in st.session_state:
-        st.session_state.end_time = df["Field change time"].max().strftime("%H:%M:%S")
+        #st.session_state.end_time = df["Field change time"].max().strftime("%H:%M:%S")}
+        st.session_state.end_date = pd.to_datetime("00:00:00").strftime("%H:%M:%S")
+    
 
     # ฟังก์ชัน Callback เพื่ออัปเดตค่า session_state
     def update_dates():
@@ -359,8 +364,6 @@ def main():
         with st.sidebar:
             # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
             st.sidebar.header("เลือกช่วงเวลา")
-            df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
-            st.write(st.session_state.start_date)
             start_date = st.date_input("📅 Start Date", st.session_state.start_date, key="start_date", on_change=update_dates)
             end_date = st.date_input("📅 End Date", st.session_state.end_date, key="end_date", on_change=update_dates)
             start_time = st.text_input("Start Time", st.session_state.start_time, key="start_time", on_change=update_dates)
@@ -400,17 +403,20 @@ def main():
         device_availability = calculate_device_availability(df_filtered)
         df_merged = merge_data(df_remote,device_availability)
         df_merged_add = add_value(df_merged)
-        plot_availability = plot(df_merged_add)
+        plot_ava = plot(df_merged_add)
+        eva_ava = evaluate(df_merged_add)
+        st.write("### Availability (%), จำนวนครั้ง, ระยะเวลา แยกตาม Device")
+        st.write(df_merged_add)
+        #st.write(plot_ava)
+        #st.write(evaluate)
+        
         
         with col1:
             st.metric(label="📈 Avg. Availability (%)", value=f"{device_availability['Availability (%)'].mean():.2f}%", delta=f"{change:.2f}%")
         with col2:
             st.metric(label="🔢 จำนวนครั้ง Initializing", value=f"{device_availability['จำนวนครั้ง Initializing'].mean()}", delta="-10", delta_color="inverse")
 
-        #evaluate_availability= evaluate(device_availability)
-        #remoteunit = remote(device_count_duration)
-        #st.write(remoteunit)
-        #display(device_count_duration,plot_availability,evaluate_availability,plot_availability,evaluate_availability,remoteunit)
+        
         
 if __name__ == "__main__":
     main()
