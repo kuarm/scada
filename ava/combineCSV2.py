@@ -30,8 +30,9 @@ def combine_csv_recursive(input_folder, output_file):
         for file_path in csv_files:
             try:
                 df = pd.read_csv(file_path, skiprows=6)  # ปรับ skiprows ตามต้องการ
+                df = df.dropna(how="all")  # ✅ ตัดบรรทัดว่างออก
                 if df.empty:
-                    st.warning(f"⚠️ ไฟล์ {file_path} ว่างเปล่า!")
+                    st.warning(f"⚠️ ไฟล์ {file_path} ว่างเปล่าหลังจากลบบรรทัดว่าง!")
                 else:
                     df_list.append(df)
             except Exception as e:
