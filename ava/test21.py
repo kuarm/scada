@@ -6,7 +6,7 @@ import plotly.express as px
 import datetime
 import os
 
-event_summary_path = "./source_csv/combined_output.csv"
+event_summary_path = "./Jan/Output_file/combined_output.csv"
 #event_summary_path = "/Users/theoldman/Documents/Develop/scada/ava/source_csv/combined_output.csv"
 input_folder = "./source_csv"
 #input_folder = "/Users/theoldman/Documents/Develop/scada/ava/source_csv/"
@@ -364,10 +364,21 @@ def main():
         with st.sidebar:
             # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
             st.sidebar.header("เลือกช่วงเวลา")
-            start_date = st.date_input("📅 Start Date", st.session_state.start_date, key="start_date", on_change=update_dates)
-            end_date = st.date_input("📅 End Date", st.session_state.end_date, key="end_date", on_change=update_dates)
-            start_time = st.text_input("Start Time", st.session_state.start_time, key="start_time", on_change=update_dates)
-            end_time = st.text_input("End Time", st.session_state.end_time, key="end_time", on_change=update_dates)
+            df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
+            start_date = st.sidebar.date_input("Start Date", df['Field change time'].min().date(), key="start_date")
+            end_date = st.sidebar.date_input("End Date", df['Field change time'].max().date(), key="end_date")
+            date_str = "2025-03-29"  # ข้อมูลที่อาจมาจาก session_state หรือไฟล์
+            if isinstance(date_str, str):  
+                date_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()  # แปลงเป็น datetime.date
+            start_time = st.sidebar.text_input("Start Time", df["Field change time"].min().strftime("%H:%M:%S"), key="start_time")
+            end_time = st.sidebar.text_input("End Time", df['Field change time'].max().strftime("%H:%M:%S"), key="end_time")
+
+            #start_date = st.date_input("📅 Start Date", st.session_state.start_date, key="start_date")#, on_change=update_dates)
+            #end_date = st.date_input("📅 End Date", st.session_state.end_date, key="end_date")#, on_change=update_dates)
+            #end_date = st.date_input("📅 End Date", df["Field change time"].max().date(), key="end_date")#, on_change=update_dates)
+            #start_time = st.text_input("Start Time", st.session_state.start_time, key="start_time", on_change=update_dates)
+            #end_time = st.text_input("End Time", st.session_state.end_time, key="end_time", on_change=update_dates)
+
             try:
                 start_time = pd.to_datetime(start_time, format="%H:%M:%S").time()
                 end_time = pd.to_datetime(end_time, format="%H:%M:%S").time()
