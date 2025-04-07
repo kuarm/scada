@@ -3,8 +3,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from datetime import datetime, time
+from datetime import datetime, timedelta
 import os
+from dateutil.relativedelta import relativedelta
+from pandas import Timestamp
 
 
 
@@ -270,11 +272,14 @@ def evaluate(df):
     # คำนวณ % ของแต่ละช่วง
     summary_df["เปอร์เซ็นต์ (%)"] = (summary_df["จำนวน Device"] / total_devices) * 100
     # จัดรูปแบบค่าเปอร์เซ็นต์ให้เป็นทศนิยม 2 ตำแหน่ง
-    summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].map("{:.2f}%".format)
-    # แสดง DataFrame พร้อมเปอร์เซ็นต์
-    #st.dataframe(summary_df, use_container_width=True)
+    #summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].map("{:.2f}%".format)
+    summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].round(2)
+    
+    # ✅ ตารางผลสรุปการประเมิน
+    st.subheader("📊 สรุปผลการประเมิน Availability")
+    st.dataframe(summary_df, use_container_width=True)
     # แสดงผลเป็นแผนภูมิแท่ง
-    fig = px.bar(
+    fig1 = px.bar(
         summary_df,
         x="เกณฑ์การประเมิน",
         y="จำนวน Device",
@@ -283,7 +288,17 @@ def evaluate(df):
         barmode="group",
         title="จำนวน Device ตามเกณฑ์การประเมินและผลการประเมิน",
     )
-    return df, summary_df, fig
+    # ✅ Pie Chart สัดส่วนผลการประเมิน
+    fig2 = px.pie(
+        summary_df,
+        names="ผลการประเมิน",
+        values="จำนวน Device",
+        title="สัดส่วนของอุปกรณ์ตามผลการประเมิน",
+        hole=0.4
+    )
+    fig2.update_traces(textinfo='percent+label')
+    st.plotly_chart(fig2, use_container_width=True)
+    return df, summary_df, fig1, fig2
 
 def add_value(df_filters):
     #new_columns = ["Availability (%)","จำนวนครั้ง Initializing","ระยะเวลา Initializing (seconds)","จำนวนครั้ง Telemetry Failure","ระยะเวลา Telemetry Failure (seconds)","จำนวนครั้ง Connecting","ระยะเวลา Connecting (seconds)"]
@@ -342,54 +357,45 @@ def main():
     change = 0.5  # การเปลี่ยนแปลง %
     col1, col2, col3, col4 = st.columns(4)
     st.markdown("---------")
-    df_filtered = load_parquet(event_path_parquet)
+    df_event = load_parquet(event_path_parquet)
     df_remote = load_parquet(remote_path_parquet)
     #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
-    df_filtered["Field change time"] = pd.to_datetime(df_filtered["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
-    df_filtered = split_state(df_filtered)
-    initial_date(df_filtered)
 
     with st.sidebar:
         # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
         st.header("เลือกช่วงเวลา")
-        #df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
-        start_date = st.date_input("📅 Start Date", st.session_state.start_date, key="start_date", on_change=update_dates)
-        end_date = st.date_input("📅 End Date", st.session_state.end_date, key="end_date", on_change=update_dates)
-        start_time = st.text_input("Start Time", st.session_state.start_time, key="start_time", on_change=update_dates)
-        end_time = st.text_input("End Time", st.session_state.end_time, key="end_time", on_change=update_dates)
-        try:
-            #start_time = datetime.strptime(start_time, "%H:%M:%S.%f").time()
-            #end_time = datetime.strptime(end_time, "%H:%M:%S.%f").time()
-            start_time = datetime.strptime(start_time.strip(), "%H:%M:%S.%f").time()
-            end_time = datetime.strptime(end_time.strip(), "%H:%M:%S.%f").time()
-        except ValueError:
-            st.error("❌ Invalid Time Format! Please use HH:MM:SS.sss(e.g., 13:45:00.123)")
-            
-        startdate = datetime.combine(start_date, start_time)
-        enddate = datetime.combine(end_date, end_time)
+        df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
+        start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
+        end_date = st.sidebar.date_input("End Date", datetime(2025, 12, 31))
+        # หาค่า min/max จากข้อมูลที่โหลด
+        min_date = df_event["Field change time"].min()
+        max_date = df_event["Field change time"].max()
+        # แปลงเป็นปี-เดือน
+        month_range = pd.date_range(min_date, max_date, freq='MS')
+        month_options = month_range.strftime('%Y-%m').tolist()
+        # Sidebar สำหรับเลือกช่วงเดือน
+        start_month = st.sidebar.selectbox("📅 เลือกเดือนเริ่มต้น", month_options, index=0)
+        end_month = st.sidebar.selectbox("📅 เลือกเดือนสิ้นสุด", month_options, index=len(month_options)-1)
+        if start_month and end_month:
+            # แปลงเป็น datetime
+            start_date = datetime.strptime(start_month, "%Y-%m")
+            end_date = datetime.strptime(end_month, "%Y-%m") + relativedelta(months=1) - timedelta(seconds=1)
+            df_event = df_event[(df_event["Field change time"] >= start_date) & (df_event["Field change time"] <= end_date)]
+        else:
+            st.warning("กรุณาเลือกเดือนเริ่มต้นและสิ้นสุด")
+        start_date = Timestamp(start_date)
+        end_date = Timestamp(end_date) 
+        #startdate = datetime.combine(start_date, start_time)
+        #enddate = datetime.combine(end_date, end_time)
         st.markdown("---------")
-
-    df_filtered = adjust_stateandtime(df_filtered, startdate, enddate)
-    # ✅ สร้างคอลัมน์ "Month" และ "Availability Range"
-    df_filtered["Month"] = df_filtered["Field change time"].dt.strftime('%B')  # เดือนเป็นชื่อภาษาอังกฤษ
+    df_filtered = split_state(df_event)
+    initial_date(df_filtered)
+    df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
     state_summary = calculate_state_summary(df_filtered)
     device_availability = calculate_device_availability(df_filtered)
     df_merged = merge_data(df_remote,device_availability)
     df_merged_add = add_value(df_merged)
-    
-    
-    
-    bins = [0, 90, 95, 100]
-    labels = ["<90%", "90-95%", ">95%"]
-    df_filtered["Availability Range"] = pd.cut(df_filtered["Availability (%)"], bins=bins, labels=labels)
-    
-    # ✅ Filter เดือน (เพิ่มใน sidebar ก่อนเลือกอุปกรณ์)
-    with st.sidebar:
-        st.header("เลือกเดือน")
-        months = sorted(df_filtered["Month"].dropna().unique())  # รายชื่อเดือนที่มีในข้อมูล
-        selected_months = st.multiselect("เลือกเดือน", options=months, default=months)
-        df_filtered = df_filtered[df_filtered["Month"].isin(selected_months)]
-        st.markdown("---------")
+
     with st.sidebar:
         st.header("เลือกอุปกรณ์")
         device_options = ["ทั้งหมด"] + list(df_merged_add["Device"].unique())
@@ -417,14 +423,14 @@ def main():
         st.metric(label="🔢 จำนวนครั้ง Initializing", value=f"{df_merged_add['จำนวนครั้ง Initializing'].mean()}", delta="-10", delta_color="inverse")
 
     plot_ava = plot(df_merged_add)
-    df_merged_add, summary_df, eva_ava = evaluate(df_merged_add)
-    st.write("### Availability (%), จำนวนครั้ง, ระยะเวลา แยกตาม Device")
+    df_merged_add, summary_df, fig_bar, fig_pie = evaluate(df_merged_add)
+    #st.write("### Availability (%), จำนวนครั้ง, ระยะเวลา แยกตาม Device")
     #st.dataframe(df_merged_add.head())
     # เพิ่ม filter สำหรับดูเฉพาะ Device ที่ Availability < 90%
-    threshold = st.slider("Filter by Availability threshold (%)", min_value=0, max_value=100, value=90)
-    filtered = df_merged_add[df_merged_add["Availability (%)"] < threshold]
-    st.write(f"Devices with Availability < {threshold}%: {len(filtered)}")
-    st.dataframe(filtered, use_container_width=True)
+    #threshold = st.slider("Filter by Availability threshold (%)", min_value=0, max_value=100, value=90)
+    #filtered = df_merged_add[df_merged_add["Availability (%)"] < threshold]
+    #st.write(f"Devices with Availability < {threshold}%: {len(filtered)}")
+    #st.dataframe(filtered, use_container_width=True)
     #st.write(plot_ava)
     #st.write(eva_ava)
              
