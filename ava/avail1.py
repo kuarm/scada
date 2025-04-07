@@ -6,8 +6,8 @@ import plotly.express as px
 from datetime import datetime, time
 import os
 
-event_summary_path = "./Jan/Output_file/combined_output.csv"
-input_folder = "./source_csv"
+
+
 event_path_parquet = "./Output_file/combined_output_event.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
 skiprows_event = 0
@@ -20,30 +20,6 @@ abnormal_states = ["Initializing", "Telemetry Failure", "Connecting"]
 st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="wide", initial_sidebar_state="expanded", menu_items=None)
 with open('./css/style.css')as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
-
-@st.cache_data   
-def load_data_csv(file_path,rows):
-    cols=["Field change time", "Message", "Device"]
-    # หาไฟล์ CSV ด้วย os.scandir()
-    csv_files = [entry.path for entry in os.scandir(input_folder) if entry.is_file() and entry.name.endswith(".csv")]
-    for file_path in csv_files:
-        try:
-            chunks = pd.read_csv(file_path, skiprows=rows, chunksize=100000, usecols=cols, encoding="utf-8")
-            df = pd.concat(chunks, ignore_index=True)
-            if df.empty:
-                st.write(f"⚠️ ไฟล์ {file_path} ว่างเปล่า!")
-            else:
-                return df
-        except Exception as e:
-            st.write(f"❌ ไม่สามารถอ่านไฟล์ {file_path}: {e}")
-
-@st.cache_data
-def load_data(uploaded_file,rows):
-    usecols = ["Name", "State", "Description", "Substation"]
-    df = pd.read_excel(uploaded_file, skiprows=rows, usecols=usecols)
-    df = df[df["Substation"] == "S1 FRTU"]
-    df.rename(columns={"Name": "Device"}, inplace=True)
-    return df
 
 @st.cache_data
 def load_parquet(path):
@@ -185,6 +161,7 @@ def calculate_device_availability(df_filtered):
         lambda x: pd.Series(split_duration(x)))
     device_availability[["Total Days", "Total Hours", "Total Minutes", "Total Seconds"]] = device_availability["Total Duration (seconds)"].apply(
         lambda x: pd.Series(split_duration(x)))
+    st.write(device_availability)
     df_merged = calculate_device_count(df_filtered,device_availability)
     return df_merged
 
@@ -392,12 +369,27 @@ def main():
         enddate = datetime.combine(end_date, end_time)
         st.markdown("---------")
 
-    df_filtered = adjust_stateandtime(df_filtered, startdate, enddate) 
+    df_filtered = adjust_stateandtime(df_filtered, startdate, enddate)
+    # ✅ สร้างคอลัมน์ "Month" และ "Availability Range"
+    df_filtered["Month"] = df_filtered["Field change time"].dt.strftime('%B')  # เดือนเป็นชื่อภาษาอังกฤษ
     state_summary = calculate_state_summary(df_filtered)
     device_availability = calculate_device_availability(df_filtered)
     df_merged = merge_data(df_remote,device_availability)
     df_merged_add = add_value(df_merged)
-
+    
+    
+    
+    bins = [0, 90, 95, 100]
+    labels = ["<90%", "90-95%", ">95%"]
+    df_filtered["Availability Range"] = pd.cut(df_filtered["Availability (%)"], bins=bins, labels=labels)
+    
+    # ✅ Filter เดือน (เพิ่มใน sidebar ก่อนเลือกอุปกรณ์)
+    with st.sidebar:
+        st.header("เลือกเดือน")
+        months = sorted(df_filtered["Month"].dropna().unique())  # รายชื่อเดือนที่มีในข้อมูล
+        selected_months = st.multiselect("เลือกเดือน", options=months, default=months)
+        df_filtered = df_filtered[df_filtered["Month"].isin(selected_months)]
+        st.markdown("---------")
     with st.sidebar:
         st.header("เลือกอุปกรณ์")
         device_options = ["ทั้งหมด"] + list(df_merged_add["Device"].unique())
