@@ -8,8 +8,6 @@ import os
 from dateutil.relativedelta import relativedelta
 from pandas import Timestamp
 
-
-
 event_path_parquet = "./Output_file/combined_output_event.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
 skiprows_event = 0
@@ -277,7 +275,7 @@ def evaluate(df):
     
     # ✅ ตารางผลสรุปการประเมิน
     st.subheader("📊 สรุปผลการประเมิน Availability")
-    st.dataframe(summary_df, use_container_width=True)
+    #st.dataframe(summary_df, use_container_width=True)
     # แสดงผลเป็นแผนภูมิแท่ง
     fig1 = px.bar(
         summary_df,
@@ -297,7 +295,7 @@ def evaluate(df):
         hole=0.4
     )
     fig2.update_traces(textinfo='percent+label')
-    st.plotly_chart(fig2, use_container_width=True)
+    #st.plotly_chart(fig2, use_container_width=True)
     return df, summary_df, fig1, fig2
 
 def add_value(df_filters):
@@ -342,14 +340,6 @@ def update_dates():
     st.session_state.end_date = st.session_state.end_date
     st.session_state.start_time = st.session_state.start_time
     st.session_state.end_time = st.session_state.end_time
-    
-def getdata():
-    df = load_data_csv(event_summary_path,skip=rows_event)
-    df_remote = load_data(remote_path_parquet,skiprows_remote)
-    if df_remote is not None and not df_remote.empty and df is not None and not df.empty:
-        df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
-        df_filtered = split_state(df)
-    return df_filtered, df_remote
        
 def main():
     st.title("📊 สถานะอุปกรณ์บนระบบ SCADA")
@@ -365,37 +355,39 @@ def main():
         # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
         st.header("เลือกช่วงเวลา")
         df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
-        start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
-        end_date = st.sidebar.date_input("End Date", datetime(2025, 12, 31))
+        #start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
+        #end_date = st.sidebar.date_input("End Date", datetime(2025, 12, 31))
         # หาค่า min/max จากข้อมูลที่โหลด
         min_date = df_event["Field change time"].min()
         max_date = df_event["Field change time"].max()
         # แปลงเป็นปี-เดือน
         month_range = pd.date_range(min_date, max_date, freq='MS')
         month_options = month_range.strftime('%Y-%m').tolist()
-        # Sidebar สำหรับเลือกช่วงเดือน
-        start_month = st.sidebar.selectbox("📅 เลือกเดือนเริ่มต้น", month_options, index=0)
-        end_month = st.sidebar.selectbox("📅 เลือกเดือนสิ้นสุด", month_options, index=len(month_options)-1)
-        if start_month and end_month:
-            # แปลงเป็น datetime
-            start_date = datetime.strptime(start_month, "%Y-%m")
-            end_date = datetime.strptime(end_month, "%Y-%m") + relativedelta(months=1) - timedelta(seconds=1)
-            df_event = df_event[(df_event["Field change time"] >= start_date) & (df_event["Field change time"] <= end_date)]
+        if month_options:
+            # Sidebar สำหรับเลือกช่วงเดือน
+            start_month = st.sidebar.selectbox("📅 เลือกเดือนเริ่มต้น", month_options, index=0)
+            end_month = st.sidebar.selectbox("📅 เลือกเดือนสิ้นสุด", month_options, index=len(month_options)-1)
+            if start_month and end_month:
+                # แปลงเป็น datetime
+                start_date = datetime.strptime(start_month, "%Y-%m")
+                end_date = datetime.strptime(end_month, "%Y-%m") + relativedelta(months=1) - timedelta(seconds=1)
+                df_event = df_event[(df_event["Field change time"] >= start_date) & (df_event["Field change time"] <= end_date)]
+            else:
+                st.warning("กรุณาเลือกเดือนเริ่มต้นและสิ้นสุด")
         else:
-            st.warning("กรุณาเลือกเดือนเริ่มต้นและสิ้นสุด")
+            st.warning("ไม่พบข้อมูลเดือนใน dataset")
         start_date = Timestamp(start_date)
-        end_date = Timestamp(end_date) 
-        #startdate = datetime.combine(start_date, start_time)
-        #enddate = datetime.combine(end_date, end_time)
+        end_date = Timestamp(end_date)
         st.markdown("---------")
+
     df_filtered = split_state(df_event)
-    initial_date(df_filtered)
+    #initial_date(df_filtered)
     df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
-    state_summary = calculate_state_summary(df_filtered)
+    #state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
     device_availability = calculate_device_availability(df_filtered)
     df_merged = merge_data(df_remote,device_availability)
     df_merged_add = add_value(df_merged)
-
+    """
     with st.sidebar:
         st.header("เลือกอุปกรณ์")
         device_options = ["ทั้งหมด"] + list(df_merged_add["Device"].unique())
@@ -409,6 +401,7 @@ def main():
         else:
             df_merged_add = df_merged_add[df_merged_add["Device"].isin(st.session_state.selected_devices)]  # กรองเฉพาะที่เลือก
         st.markdown("---------")
+    """
     with st.sidebar:
         st.header("Functions:")
         #selected_device = st.selectbox("เลือก Device", device_options, index=0)
@@ -416,7 +409,26 @@ def main():
         cols_select = ['State', 'Description', 'สถานที่', 'การไฟฟ้า', 'ประเภทอุปกรณ์', 'จุดติดตั้ง', 'Master', 'โครงการติดตั้ง']
         funct_select = st.radio(label="", options = option_funct)
         st.markdown("---------")   
-        
+
+    with st.sidebar:
+        # 🔹 ตัวกรอง: เลือกอุปกรณ์ที่ต้องการวิเคราะห์
+        device_list = ["ทั้งหมด"] + list(df_merged_add["Device"].unique())
+        selected_devices = st.multiselect("เลือกอุปกรณ์ที่ต้องการวิเคราะห์", device_list, default=["ทั้งหมด"])   
+        # กรองข้อมูลเฉพาะอุปกรณ์ที่เลือก
+        df_merged_add = df_merged_add[df_merged_add["Device"].isin(selected_devices)]
+        # ตรวจสอบว่าเลือก "ทั้งหมด" หรือไม่
+        if not selected_devices or "ทั้งหมด" in selected_devices:
+            df_merged_add_filter = df_merged_add.copy()  # แสดงข้อมูลทั้งหมด
+        else:
+            df_merged_add_filter = df_merged_add[df_merged_add["Device"].isin(selected_devices)]  # กรองเฉพาะที่เลือก
+        st.markdown("---------")
+    
+    # 🔹 ดูรายละเอียดอุปกรณ์ที่ Availability < 80%
+    bad_devices = df_merged_add_filter[df_merged_add["Availability (%)"] < 80]
+
+    st.subheader("😴 รายชื่ออุปกรณ์ที่ Availability ต่ำกว่า 80% (ต้องนอน)")
+    st.dataframe(bad_devices[["Device", "Availability (%)"]], use_container_width=True)
+
     with col1:
         st.metric(label="📈 Avg. Availability (%)", value=f"{df_merged_add['Availability (%)'].mean():.2f}%", delta=f"{change:.2f}%")
     with col2:
