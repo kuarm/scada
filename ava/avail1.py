@@ -27,6 +27,7 @@ def load_parquet(path):
 
 def merge_data(df1,df2):
     df_filters = df1.merge(df2, on="Device", how="outer", suffixes=("_old", ""))
+    #df_filters = df_filters.drop(['State', 'Substation', 'Description'], axis=1, inplace=True) # ลบทีละหลายคอลัมน์ก็ได้
     return df_filters
 
 # ฟังก์ชันดึงค่า Previous State และ New State และลบจุดท้ายข้อความ
@@ -161,7 +162,6 @@ def calculate_device_availability(df_filtered):
         lambda x: pd.Series(split_duration(x)))
     device_availability[["Total Days", "Total Hours", "Total Minutes", "Total Seconds"]] = device_availability["Total Duration (seconds)"].apply(
         lambda x: pd.Series(split_duration(x)))
-    st.write(device_availability)
     df_merged = calculate_device_count(df_filtered,device_availability)
     return df_merged
 
@@ -344,13 +344,12 @@ def update_dates():
 def main():
     st.title("📊 สถานะอุปกรณ์บนระบบ SCADA")
     st.markdown("---------")
-    change = 0.5  # การเปลี่ยนแปลง %
-    col1, col2, col3, col4 = st.columns(4)
+    #change = 0.5  # การเปลี่ยนแปลง %
+    #col1, col2, col3, col4 = st.columns(4)
     st.markdown("---------")
     df_event = load_parquet(event_path_parquet)
     df_remote = load_parquet(remote_path_parquet)
     #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
-
     with st.sidebar:
         # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
         st.header("เลือกช่วงเวลา")
@@ -360,6 +359,7 @@ def main():
         # หาค่า min/max จากข้อมูลที่โหลด
         min_date = df_event["Field change time"].min()
         max_date = df_event["Field change time"].max()
+        st.write(min_date)
         # แปลงเป็นปี-เดือน
         month_range = pd.date_range(min_date, max_date, freq='MS')
         month_options = month_range.strftime('%Y-%m').tolist()
@@ -386,7 +386,8 @@ def main():
     #state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
     device_availability = calculate_device_availability(df_filtered)
     df_merged = merge_data(df_remote,device_availability)
-    df_merged_add = add_value(df_merged)
+    df_merged_add = add_value(df_merged) 
+    st.dataframe(df_merged_add.head())
     """
     with st.sidebar:
         st.header("เลือกอุปกรณ์")
@@ -415,7 +416,7 @@ def main():
         device_list = ["ทั้งหมด"] + list(df_merged_add["Device"].unique())
         selected_devices = st.multiselect("เลือกอุปกรณ์ที่ต้องการวิเคราะห์", device_list, default=["ทั้งหมด"])   
         # กรองข้อมูลเฉพาะอุปกรณ์ที่เลือก
-        df_merged_add = df_merged_add[df_merged_add["Device"].isin(selected_devices)]
+        #df_merged_add = df_merged_add[df_merged_add["Device"].isin(selected_devices)]
         # ตรวจสอบว่าเลือก "ทั้งหมด" หรือไม่
         if not selected_devices or "ทั้งหมด" in selected_devices:
             df_merged_add_filter = df_merged_add.copy()  # แสดงข้อมูลทั้งหมด
@@ -424,16 +425,15 @@ def main():
         st.markdown("---------")
     
     # 🔹 ดูรายละเอียดอุปกรณ์ที่ Availability < 80%
-    bad_devices = df_merged_add_filter[df_merged_add["Availability (%)"] < 80]
-
+    bad_devices = df_merged_add_filter[df_merged_add_filter["Availability (%)"] < 80]
     st.subheader("😴 รายชื่ออุปกรณ์ที่ Availability ต่ำกว่า 80% (ต้องนอน)")
     st.dataframe(bad_devices[["Device", "Availability (%)"]], use_container_width=True)
-
+    """
     with col1:
         st.metric(label="📈 Avg. Availability (%)", value=f"{df_merged_add['Availability (%)'].mean():.2f}%", delta=f"{change:.2f}%")
     with col2:
         st.metric(label="🔢 จำนวนครั้ง Initializing", value=f"{df_merged_add['จำนวนครั้ง Initializing'].mean()}", delta="-10", delta_color="inverse")
-
+    """
     plot_ava = plot(df_merged_add)
     df_merged_add, summary_df, fig_bar, fig_pie = evaluate(df_merged_add)
     #st.write("### Availability (%), จำนวนครั้ง, ระยะเวลา แยกตาม Device")
