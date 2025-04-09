@@ -9,18 +9,29 @@ from dateutil.relativedelta import relativedelta
 from pandas import Timestamp
 import io
 
-event_path_parquet = "./Output_file/combined_output_event.parquet"
+source_excel = "D:/Develop/scada/ava/source_excel/S1-REC-020X-021X-0220_1.xlsx"
+event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
 skiprows_event = 0
 skiprows_remote = 4
 cols_event=["Field change time", "Message", "Device"]
 normal_state = "Online"
-abnormal_states = ["Initializing", "Telemetry Failure", "Connecting"]
+abnormal_states = ["Initializing", "Telemetry Failure", "Connecting", "Offline"]
+state = ["Online", "Initializing", "Telemetry Failure", "Connecting", "Offline"]
  
 # Set page
 st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="wide", initial_sidebar_state="expanded", menu_items=None)
 with open('./css/style.css')as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
+
+@st.cache_data
+def load_data(uploaded_file,rows):
+    usecols1 = ["Name", "State", "Description", "Substation"]
+    usecols2=["Field change time", "Message", "Device"]
+    df = pd.read_excel(uploaded_file, skiprows=rows, usecols=usecols2)
+    #df = df[df["Substation"] == "S1 FRTU"]
+    #df.rename(columns={"Name": "Device"}, inplace=True)
+    return df
 
 @st.cache_data
 def load_parquet(path):
@@ -44,12 +55,53 @@ def split_state(df):
     #df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
     df = df.dropna(subset=["Field change time"])  # ลบแถวที่มี NaT ใน "Field change time"
     #df_filtered = df[(df['Field change time'].between(startdate, enddate))]
-    df_filtered = df[['Field change time', 'Message', 'Device']].sort_values("Field change time") #.reset_index(drop=True)
+    df_filtered = df[['Field change time', 'Message', 'Device']].sort_values("Field change time").reset_index(drop=True)
     #df_filtered['Adjusted Duration (seconds)'] = df_filtered['Adjusted Duration (seconds)'].fillna(0)
-    #df_filtered[["Previous State", "New State"]] = df_filtered["Message"].apply(lambda x: pd.Series(extract_states(x))) # ใช้ฟังก์ชันในการแยก Previous State และ New State
-    df_filtered['Previous State'], df_filtered['New State'] = zip(*df_filtered['Message'].apply(extract_states))
+    df_filtered[["Previous State", "New State"]] = df_filtered["Message"].apply(lambda x: pd.Series(extract_states(x))) # ใช้ฟังก์ชันในการแยก Previous State และ New State
+    #df_filtered['Previous State'], df_filtered['New State'] = zip(*df_filtered['Message'].apply(extract_states))
     df_filtered= df_filtered.dropna(subset=["Previous State", "New State"]).reset_index(drop=True) # ลบแถวที่ไม่มีข้อมูล
     return df_filtered
+
+def sort_state_chain(df):
+    """จัดเรียงแถวที่มี Field change time ซ้ำกัน โดยให้ New State ของแถวบน = Previous State ของแถวถัดไป"""
+    # จัดกลุ่มตามเวลาที่ซ้ำกัน
+    grouped = df.groupby("Field change time")
+    result = []
+
+    for group_time, group_df in grouped:
+        if len(group_df) == 1:
+            result.append(group_df)
+            continue
+
+        # สร้าง map ของ Previous -> Row
+        state_map = {row["Previous State"]: row for _, row in group_df.iterrows()}
+        new_states = set(group_df["New State"])
+        prev_states = set(group_df["Previous State"])
+
+        # หา "จุดเริ่มต้น" คือ Previous State ที่ไม่ใช่ New State ของใครเลย
+        start_candidates = list(prev_states - new_states)
+
+        if not start_candidates:
+            # ถ้าไม่มีจุดเริ่มต้นที่ชัดเจน (เช่น loop หรือ incomplete), ใช้ลำดับเดิมไปก่อน
+            sorted_group = group_df
+        else:
+            current_state = start_candidates[0]
+            rows = []
+            visited = set()
+
+            while current_state in state_map and current_state not in visited:
+                row = state_map[current_state]
+                rows.append(row)
+                visited.add(current_state)
+                current_state = row["New State"]
+
+            sorted_group = pd.DataFrame(rows)
+
+        result.append(sorted_group)
+
+    # รวมผลลัพธ์ที่จัดเรียงแล้ว
+    return pd.concat(result).reset_index(drop=True)
+
 
 def adjust_stateandtime(df, startdate, enddate):
     if df.empty:
@@ -154,6 +206,8 @@ def calculate_device_availability(df_filtered):
     # คำนวณเวลาที่ Device อยู่ในสถานะปกติ
     device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
+    st.write(device_online_duration)
+    st.write(device_total_duration)
     # รวมข้อมูลทั้งสองตาราง
     device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
     # คำนวณ Availability (%)
@@ -172,7 +226,8 @@ def calculate_device_count(df_filtered,device_availability):
     # ✅ **จำนวนครั้งที่เกิด State ต่างๆ ของแต่ละ Device**
     #device_availability = calculate_device_availability(df_filtered)  # เพิ่มการคำนวณก่อนใช้งาน
     # คำนวณจำนวนครั้งของแต่ละ State
-    state_count = df_filtered[df_filtered["New State"].isin(abnormal_states)].groupby(["Device", "New State"]).size().unstack(fill_value=0)
+    state_count = df_filtered[df_filtered["New State"].isin(state)].groupby(["Device", "New State"]).size().unstack(fill_value=0)
+    st.write(state_count)
     # คำนวณระยะเวลารวมของแต่ละ State
     state_duration = df_filtered[df_filtered["New State"].isin(abnormal_states)].groupby(["Device", "New State"])["Adjusted Duration (seconds)"].sum().unstack(fill_value=0)
     # รวมจำนวนครั้งและระยะเวลาของแต่ละ State
@@ -349,21 +404,24 @@ def main():
     #change = 0.5  # การเปลี่ยนแปลง %
     col1, col2, col3, col4 = st.columns(4)
     st.markdown("---------")
-    df_event = load_parquet(event_path_parquet)
+    #df_event = load_parquet(event_path_parquet)
+    df_event = load_data(source_excel,0)
     df_remote = load_parquet(remote_path_parquet)
     #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
     with st.sidebar:
         # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
         st.header("เลือกช่วงเวลา")
-        df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
+        df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce')
         #start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
         #end_date = st.sidebar.date_input("End Date", datetime(2025, 12, 31))
         # หาค่า min/max จากข้อมูลที่โหลด
         min_date = df_event["Field change time"].min()
         max_date = df_event["Field change time"].max()
+        st.write(max_date)
         # แปลงเป็นปี-เดือน
         month_range = pd.date_range(min_date, max_date, freq='MS')
         month_options = month_range.strftime('%Y-%m').tolist()
+        st.write(month_options)
         if month_options:
             # Sidebar สำหรับเลือกช่วงเดือน
             start_month = st.sidebar.selectbox("📅 เลือกเดือนเริ่มต้น", month_options, index=0)
@@ -382,26 +440,30 @@ def main():
         st.markdown("---------")
 
     df_filtered = split_state(df_event)
+    df_filtered = sort_state_chain(df_filtered)
     #initial_date(df_filtered)
     df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
-    #state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
+    #st.write(df_filtered[df_filtered["New State"] == "Initializing"])
+    st.write(df_filtered)
+    state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
+    st.dataframe(state_summary)
     device_availability = calculate_device_availability(df_filtered)
-    df_merged = merge_data(df_remote,device_availability)
-    df_merged_add = add_value(df_merged) 
-
+    #df_merged = merge_data(df_remote,device_availability)
+    #df_merged_add = add_value(df_merged) 
+    df_merged_add = device_availability 
     with st.sidebar:
-        st.header("Functions:")
+        #st.header("Functions:")
         #selected_device = st.selectbox("เลือก Device", device_options, index=0)
-        option_funct = ['%Avaiability']
-        cols_select = ['State', 'Description', 'สถานที่', 'การไฟฟ้า', 'ประเภทอุปกรณ์', 'จุดติดตั้ง', 'Master', 'โครงการติดตั้ง']
-        funct_select = st.radio(label="", options = option_funct)
+        #option_funct = ['%Avaiability']
+        #cols_select = ['State', 'Description', 'สถานที่', 'การไฟฟ้า', 'ประเภทอุปกรณ์', 'จุดติดตั้ง', 'Master', 'โครงการติดตั้ง']
+        #funct_select = st.radio(label="", options = option_funct)
         st.markdown("---------")   
 
     with st.sidebar:
         st.header("เลือกอุปกรณ์")
         # 🔹 ตัวกรอง: เลือกอุปกรณ์ที่ต้องการวิเคราะห์
         device_list = ["ทั้งหมด"] + list(df_merged_add["Device"].unique())
-        selected_devices = st.multiselect("เลือกอุปกรณ์ที่ต้องการวิเคราะห์", device_list, default=["ทั้งหมด"])   
+        selected_devices = st.multiselect("", device_list, default=["ทั้งหมด"])   
         # กรองข้อมูลเฉพาะอุปกรณ์ที่เลือก
         #df_merged_add = df_merged_add[df_merged_add["Device"].isin(selected_devices)]
         # ตรวจสอบว่าเลือก "ทั้งหมด" หรือไม่
@@ -430,25 +492,22 @@ def main():
     #st.dataframe(filtered, use_container_width=True)
     #st.write(plot_ava)
     #st.write(eva_ava)
+    st.header("ข้อมูลอุปกรณ์ Filter ตาม % Availability")
     with st.sidebar:
         st.header("เลือกช่วง % Availability")
-        use_manual_input = st.checkbox("✅ ป้อนช่วง Availability ด้วยตัวเอง")
-        if use_manual_input:
+        option_select = ['เลือกช่่วง Availability', 'กำหนด Availability เอง']
+        use_manual_input = st.radio(label="ป้อนค่า Availability", options = option_select)
+        if use_manual_input == 'เลือกช่่วง Availability':
+            min_avail, max_avail = st.slider("เลือกช่วง Availability (%)", 0, 100, (70, 90), step=1)
+        else:
             min_avail = st.number_input("ต่ำสุด (%)", min_value=0, max_value=100, value=70, step=1)
             max_avail = st.number_input("สูงสุด (%)", min_value=0, max_value=100, value=90, step=1)
-        else:
-            min_avail, max_avail = st.slider("เลือกช่วง Availability (%)", 0, 100, (70, 90), step=1)
+        filtered_df = df_merged_add[(df_merged_add["Availability (%)"] >= min_avail) & (df_merged_add["Availability (%)"] <= max_avail)]
+        st.markdown("---------")
+    st.dataframe(filtered_df)    
+    st.markdown("---------")
 
-        filtered_df = df_merged_add[
-            (df_merged_add["Availability (%)"] >= min_avail) & 
-            (df_merged_add["Availability (%)"] <= max_avail)
-        ]
-    #st.write("🔍 อุปกรณ์ในช่วง % Availability ที่เลือก:")
-    #st.dataframe(filtered_df[["Device", "Availability (%)"]].drop_duplicates())
-    #st.markdown("---------")
-
-    st.header("แสดง % Availability ตามช่วง")
-    # นิยามช่วง % Availability ที่ต้องการ
+    st.header("จำนวนอุปกรณ์ตามช่วง % Availability")   
     bins = [0, 20, 40, 60, 80, 90, 95, 100]
     labels = ["0-20%", "21-40%", "41-60%", "61-80%", "81-90%", "91-95%", "96-100%"]
     # เพิ่มคอลัมน์ใหม่ "Availability Group" ให้กับ DataFrame
@@ -458,10 +517,16 @@ def main():
     # แสดงผลเป็น DataFrame หรือ Plotly Chart
     st.write("📊 จำนวนอุปกรณ์ในแต่ละช่วง Availability:")
     #st.bar_chart(grouped_counts)
-    st.dataframe(grouped_counts.reset_index().rename(columns={
-        "index": "ช่วง % Availability",
-        "Availability Group": "จำนวนอุปกรณ์"
-        }))
+    st.dataframe(grouped_counts.reset_index().rename(columns={"index": "ช่วง % Availability","Availability Group": "จำนวนอุปกรณ์"}))     
+
+       
+    #st.write("🔍 อุปกรณ์ในช่วง % Availability ที่เลือก:")
+    #st.dataframe(filtered_df[["Device", "Availability (%)"]].drop_duplicates())
+    #st.markdown("---------")
+
+    
+    
+    
     st.markdown("---------")
     
     with st.sidebar:
