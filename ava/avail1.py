@@ -8,11 +8,8 @@ import os
 from dateutil.relativedelta import relativedelta
 from pandas import Timestamp
 import io
-import gspread
-from gspread_dataframe import get_as_dataframe
-from oauth2client.service_account import ServiceAccountCredentials
 
-source_excel = "D:/Develop/scada/ava/source_excel/S1-REC-020X-021X-0220_1.xlsx"
+source_excel = "D:/ML/scada/ava/source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
 skiprows_event = 0
@@ -26,17 +23,6 @@ state = ["Online", "Initializing", "Telemetry Failure", "Connecting", "Offline"]
 st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="wide", initial_sidebar_state="expanded", menu_items=None)
 with open('./css/style.css')as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
-
-# ใช้ scope สำหรับ Google Sheets
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-client = gspread.authorize(creds)
-
-# เปิด Google Sheet ด้วยชื่อหรือ URL
-sheet = client.open("event").worksheet("Sheet1")
-
-
-
 
 @st.cache_data
 def load_data(uploaded_file,rows):
@@ -419,41 +405,42 @@ def main():
     st.markdown("---------")
     #df_event = load_parquet(event_path_parquet)
     uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
-    if sheet:
-        df_event = get_as_dataframe(sheet)
-        st.dataframe(df_event)
-        #df_event = load_data(uploaded_file,0)
-        df_remote = load_parquet(remote_path_parquet)
-        if df_event is not None:
-            #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
-            with st.sidebar:
-                # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
-                st.header("เลือกช่วงเวลา")
-                df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce')
-                #start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
-                #end_date = st.sidebar.date_input("End Date", datetime(2025, 12, 31))
-                # หาค่า min/max จากข้อมูลที่โหลด
-                min_date = df_event["Field change time"].min()
-                max_date = df_event["Field change time"].max()
-                # แปลงเป็นปี-เดือน
-                month_range = pd.date_range(min_date, max_date, freq='MS')
-                month_options = month_range.strftime('%Y-%m').tolist()
-                if month_options:
-                    # Sidebar สำหรับเลือกช่วงเดือน
-                    start_month = st.sidebar.selectbox("📅 เลือกเดือนเริ่มต้น", month_options, index=0)
-                    end_month = st.sidebar.selectbox("📅 เลือกเดือนสิ้นสุด", month_options, index=len(month_options)-1)
-                    if start_month and end_month:
-                        # แปลงเป็น datetime
-                        start_date = datetime.strptime(start_month, "%Y-%m")
-                        end_date = datetime.strptime(end_month, "%Y-%m") + relativedelta(months=1) - timedelta(seconds=1)
-                        df_event = df_event[(df_event["Field change time"] >= start_date) & (df_event["Field change time"] <= end_date)]
-                    else:
-                        st.warning("กรุณาเลือกเดือนเริ่มต้นและสิ้นสุด")
+    
+    #df_event = get_as_dataframe(sheet)
+    df_event = load_data(source_excel,0)
+    st.dataframe(df_event)
+    #df_event = load_data(uploaded_file,0)
+    df_remote = load_parquet(remote_path_parquet)
+    if df_event is not None:
+        #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
+        with st.sidebar:
+            # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
+            st.header("เลือกช่วงเวลา")
+            df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce')
+            #start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
+            #end_date = st.sidebar.date_input("End Date", datetime(2025, 12, 31))
+            # หาค่า min/max จากข้อมูลที่โหลด
+            min_date = df_event["Field change time"].min()
+            max_date = df_event["Field change time"].max()
+            # แปลงเป็นปี-เดือน
+            month_range = pd.date_range(min_date, max_date, freq='MS')
+            month_options = month_range.strftime('%Y-%m').tolist()
+            if month_options:
+                # Sidebar สำหรับเลือกช่วงเดือน
+                start_month = st.sidebar.selectbox("📅 เลือกเดือนเริ่มต้น", month_options, index=0)
+                end_month = st.sidebar.selectbox("📅 เลือกเดือนสิ้นสุด", month_options, index=len(month_options)-1)
+                if start_month and end_month:
+                    # แปลงเป็น datetime
+                    start_date = datetime.strptime(start_month, "%Y-%m")
+                    end_date = datetime.strptime(end_month, "%Y-%m") + relativedelta(months=1) - timedelta(seconds=1)
+                    df_event = df_event[(df_event["Field change time"] >= start_date) & (df_event["Field change time"] <= end_date)]
                 else:
-                    st.warning("ไม่พบข้อมูลเดือนใน dataset")
-                start_date = Timestamp(start_date)
-                end_date = Timestamp(end_date)
-                st.markdown("---------")
+                    st.warning("กรุณาเลือกเดือนเริ่มต้นและสิ้นสุด")
+            else:
+                st.warning("ไม่พบข้อมูลเดือนใน dataset")
+            start_date = Timestamp(start_date)
+            end_date = Timestamp(end_date)
+            st.markdown("---------")
 
             df_filtered = split_state(df_event)
             df_filtered = sort_state_chain(df_filtered)
