@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import os
 from dateutil.relativedelta import relativedelta
 from pandas import Timestamp
-import io
+from io import BytesIO
 
 source_csv = "D:/ML/scada/ava/output_file/S1-REC_JAN-MAR2025.csv"
 source_excel = "D:/ML/scada/ava/source_excel/S1-REC_JAN-MAR2025.xlsx"
@@ -324,8 +324,6 @@ def evaluate(df):
     summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].round(2)
     
     # ✅ ตารางผลสรุปการประเมิน
-    st.subheader("📊 Chart Availability")
-    #st.dataframe(summary_df, use_container_width=True)
     # แสดงผลเป็นแผนภูมิแท่ง
     fig1 = px.bar(
         summary_df,
@@ -334,14 +332,14 @@ def evaluate(df):
         color="ผลการประเมิน",
         text="จำนวน Device",
         barmode="group",
-        title="จำนวน Device ตามเกณฑ์การประเมินและผลการประเมิน",
+        title="จำนวน Device ตามเกณฑ์การประเมิน",
     )
     # ✅ Pie Chart สัดส่วนผลการประเมิน
     fig2 = px.pie(
         summary_df,
         names="ผลการประเมิน",
         values="จำนวน Device",
-        title="สัดส่วนของอุปกรณ์ตามผลการประเมิน",
+        title="ประเมิน",
         hole=0.4
     )
     fig2.update_traces(textinfo='percent+label')
@@ -391,7 +389,7 @@ def update_dates():
     st.session_state.end_date = st.session_state.end_date
     st.session_state.start_time = st.session_state.start_time
     st.session_state.end_time = st.session_state.end_time
-       
+    
 def main():
     st.title("📊 ค่า Availability บนระบบ SCADA/TDMS ของอุปกรณ์ในสถานีไฟฟ้า และอุปกรณ์ในระบบฯ")
     st.markdown("---------")
@@ -463,6 +461,42 @@ def main():
                 df_merged_add_filter = df_merged_add[df_merged_add["Device"].isin(selected_devices)]  # กรองเฉพาะที่เลือก
             st.markdown("---------")
                 
+        #แสดงค่า ประเมินค่า %Avail, Bar Chart
+        df_eva, summary_df, fig1, fig2 = evaluate(df_merged_add_filter)
+        #st.dataframe(summary_df)
+        #st.plotly_chart(fig1, use_container_width=True)
+        
+        #เลือกช่วง %Avail
+        def group_plot(df):
+            bins = [0, 20, 40, 60, 80, 90, 95, 100]
+            labels = ["0-20%", "21-40%", "41-60%", "61-80%", "81-90%", "91-95%", "96-100%"]
+            selected_group = st.multiselect("เลือกช่วง % Availability ที่ต้องการดู:", labels)
+            df["Availability Group"] = pd.cut(df["Availability (%)"], bins=bins, labels=labels, right=True)
+            filtered_by_group = df[df["Availability Group"].isin(selected_group)]
+            grouped_counts = filtered_by_group["Availability Group"].value_counts().sort_index().reset_index()
+            grouped_counts.rename(columns={"Availability Group": "ช่วง % Availability","Count": "จำนวนอุปกรณ์"}, inplace=True)
+            #grouped_counts = grouped_counts[grouped_counts["จำนวนอุปกรณ์"] > 0]
+            return filtered_by_group, grouped_counts
+        
+        df_group,grouped_count = group_plot(df_merged_add_filter)
+        #st.write(f"จำนวน Device {len(filtered_by_group)}")
+        st.dataframe(df_group)
+        st.dataframe(grouped_count)
+        def to_excel(df):
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Sheet1')
+            processed_data = output.getvalue()
+            return processed_data
+        st.markdown("ดาวน์โหลดข้อมูลอุปกรณ์ทั้งหมด")
+        excel_data = to_excel(df_group)
+        st.download_button(
+            label="📥 ดาวน์โหลดเป็น Excel",
+            data=excel_data,
+            file_name='availability_data.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
         st.header("Availability (%), จำนวนครั้ง, ระยะเวลา แยกตาม Device")
         if st.checkbox("📌 เลือก checkbox แสดงข้อมูลทั้งหมด"):
             st.dataframe(df_merged_add_filter)
@@ -529,7 +563,6 @@ def main():
         option_funct = ['ประเมินผล % Availability', 'ข้อมูลอุปกรณ์ตาม % Availability', 'เลือกช่วง % Availability']
         selected_funct = st.selectbox("Filter", option_funct, index=0)
         #cols_select = ['State', 'Description', 'สถานที่', 'การไฟฟ้า', 'ประเภทอุปกรณ์', 'จุดติดตั้ง', 'Master', 'โครงการติดตั้ง']
-        
         
         if selected_funct =='ประเมินผล % Availability':       
             df_eva, summary_df, fig1, fig2 = evaluate(df_merged_add_filter)
