@@ -9,11 +9,10 @@ from dateutil.relativedelta import relativedelta
 from pandas import Timestamp
 import io
 
+source_csv = "D:/ML/scada/ava/output_file/S1-REC_JAN-MAR2025.csv"
 source_excel = "D:/ML/scada/ava/source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
-skiprows_event = 0
-skiprows_remote = 4
 cols_event=["Field change time", "Message", "Device"]
 normal_state = "Online"
 abnormal_states = ["Initializing", "Telemetry Failure", "Connecting", "Offline"]
@@ -25,10 +24,10 @@ with open('./css/style.css')as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
 
 @st.cache_data
-def load_data(uploaded_file,rows):
+def load_data_xls(uploaded_file):
     usecols1 = ["Name", "State", "Description", "Substation"]
     usecols2=["Field change time", "Message", "Device"]
-    df = pd.read_excel(uploaded_file, skiprows=rows, usecols=usecols2)
+    df = pd.read_excel(uploaded_file, usecols=usecols2)
     #df = df[df["Substation"] == "S1 FRTU"]
     #df.rename(columns={"Name": "Device"}, inplace=True)
     return df
@@ -205,8 +204,6 @@ def calculate_device_availability(df_filtered):
     # คำนวณเวลาที่ Device อยู่ในสถานะปกติ
     device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
-    st.write(device_online_duration)
-    st.write(device_total_duration)
     # รวมข้อมูลทั้งสองตาราง
     device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
     # คำนวณ Availability (%)
@@ -226,7 +223,6 @@ def calculate_device_count(df_filtered,device_availability):
     #device_availability = calculate_device_availability(df_filtered)  # เพิ่มการคำนวณก่อนใช้งาน
     # คำนวณจำนวนครั้งของแต่ละ State
     state_count = df_filtered[df_filtered["New State"].isin(state)].groupby(["Device", "New State"]).size().unstack(fill_value=0)
-    st.write(state_count)
     # คำนวณระยะเวลารวมของแต่ละ State
     state_duration = df_filtered[df_filtered["New State"].isin(abnormal_states)].groupby(["Device", "New State"])["Adjusted Duration (seconds)"].sum().unstack(fill_value=0)
     # รวมจำนวนครั้งและระยะเวลาของแต่ละ State
@@ -293,7 +289,6 @@ def evaluate(df):
     # ✅ **ประเมิน**
     # กำหนดช่วง Availability (%)
     bins = [0, 80, 90, 100]
-    #labels = ["90 < Availability (%) <= 100", "80 < Availability (%) <= 90", "0 <= Availability (%) <= 80"]  # ชื่อช่วงใหม่
     labels = ["0 <= Availability (%) <= 80", "80 < Availability (%) <= 90", "90 < Availability (%) <= 100"]  # ชื่อช่วงใหม่
     # เพิ่มคอลัมน์ "เกณฑ์การประเมิน"
     df["เกณฑ์การประเมิน"] = pd.cut(df["Availability (%)"], bins=bins, labels=labels, right=True)
@@ -329,7 +324,7 @@ def evaluate(df):
     summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].round(2)
     
     # ✅ ตารางผลสรุปการประเมิน
-    st.subheader("📊 สรุปผลการประเมิน Availability")
+    st.subheader("📊 Chart Availability")
     #st.dataframe(summary_df, use_container_width=True)
     # แสดงผลเป็นแผนภูมิแท่ง
     fig1 = px.bar(
@@ -398,19 +393,20 @@ def update_dates():
     st.session_state.end_time = st.session_state.end_time
        
 def main():
-    st.title("📊 สถานะอุปกรณ์บนระบบ SCADA")
+    st.title("📊 ค่า Availability บนระบบ SCADA/TDMS ของอุปกรณ์ในสถานีไฟฟ้า และอุปกรณ์ในระบบฯ")
     st.markdown("---------")
     #change = 0.5  # การเปลี่ยนแปลง %
     col1, col2, col3, col4 = st.columns(4)
     st.markdown("---------")
     #df_event = load_parquet(event_path_parquet)
     uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
+    if uploaded_file:
+        df_event = load_data_xls(uploaded_file)
+    else:
+        df_event = load_data_xls(source_excel)
+        #df_event = get_as_dataframe(sheet)
+        #df_remote = load_parquet(remote_path_parquet)
     
-    #df_event = get_as_dataframe(sheet)
-    df_event = load_data(source_excel,0)
-    st.dataframe(df_event)
-    #df_event = load_data(uploaded_file,0)
-    df_remote = load_parquet(remote_path_parquet)
     if df_event is not None:
         #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
         with st.sidebar:
@@ -442,133 +438,132 @@ def main():
             end_date = Timestamp(end_date)
             st.markdown("---------")
 
-            df_filtered = split_state(df_event)
-            df_filtered = sort_state_chain(df_filtered)
-            #initial_date(df_filtered)
-            df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
-            #st.write(df_filtered[df_filtered["New State"] == "Initializing"])
-            st.write(df_filtered)
-            state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
-            st.dataframe(state_summary)
-            device_availability = calculate_device_availability(df_filtered)
-            #df_merged = merge_data(df_remote,device_availability)
-            #df_merged_add = add_value(df_merged) 
-            df_merged_add = device_availability 
-            with st.sidebar:
-                #st.header("Functions:")
-                #selected_device = st.selectbox("เลือก Device", device_options, index=0)
-                #option_funct = ['%Avaiability']
-                #cols_select = ['State', 'Description', 'สถานที่', 'การไฟฟ้า', 'ประเภทอุปกรณ์', 'จุดติดตั้ง', 'Master', 'โครงการติดตั้ง']
-                #funct_select = st.radio(label="", options = option_funct)
-                st.markdown("---------")   
+        df_filtered = split_state(df_event)
+        df_filtered = sort_state_chain(df_filtered)
+        #initial_date(df_filtered)
+        df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
+        state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
+        device_availability = calculate_device_availability(df_filtered)
+        #df_merged = merge_data(df_remote,device_availability)
+        #df_merged_add = add_value(df_merged) 
+        df_merged_add = device_availability    
 
-            with st.sidebar:
-                st.header("เลือกอุปกรณ์")
-                # 🔹 ตัวกรอง: เลือกอุปกรณ์ที่ต้องการวิเคราะห์
-                device_list = ["ทั้งหมด"] + list(df_merged_add["Device"].unique())
-                selected_devices = st.multiselect("", device_list, default=["ทั้งหมด"])   
-                # กรองข้อมูลเฉพาะอุปกรณ์ที่เลือก
-                #df_merged_add = df_merged_add[df_merged_add["Device"].isin(selected_devices)]
-                # ตรวจสอบว่าเลือก "ทั้งหมด" หรือไม่
-                if not selected_devices or "ทั้งหมด" in selected_devices:
-                    df_merged_add_filter = df_merged_add.copy()  # แสดงข้อมูลทั้งหมด
-                else:
-                    df_merged_add_filter = df_merged_add[df_merged_add["Device"].isin(selected_devices)]  # กรองเฉพาะที่เลือก
-                st.markdown("---------")
-            
-            # 🔹 ดูรายละเอียดอุปกรณ์ที่ Availability < 80%
-            #bad_devices = df_merged_add_filter[df_merged_add_filter["Availability (%)"] < 80]
-            #st.subheader("😴 รายชื่ออุปกรณ์ที่ Availability ต่ำกว่า 80% (ต้องนอน)")
-            #st.dataframe(bad_devices[["Device", "Availability (%)"]], use_container_width=True)
-            # คำนวณค่าเฉลี่ยของ Availability
-
-
-
-            #plot_ava = plot(df_merged_add)
-            #df_merged_add, summary_df, fig_bar, fig_pie = evaluate(df_merged_add)
-            #st.write("### Availability (%), จำนวนครั้ง, ระยะเวลา แยกตาม Device")
-            #st.dataframe(df_merged_add.head())
-            # เพิ่ม filter สำหรับดูเฉพาะ Device ที่ Availability < 90%
-            #threshold = st.slider("Filter by Availability threshold (%)", min_value=0, max_value=100, value=90)
-            #filtered = df_merged_add[df_merged_add["Availability (%)"] < threshold]
-            #st.write(f"Devices with Availability < {threshold}%: {len(filtered)}")
-            #st.dataframe(filtered, use_container_width=True)
-            #st.write(plot_ava)
-            #st.write(eva_ava)
-            st.header(f"ข้อมูลอุปกรณ์ Filter ตาม % Availability {start_month} - {end_month}")
-            with st.sidebar:
-                st.header("เลือกช่วง % Availability")
-                option_select = ['เลือกช่่วง Availability', 'กำหนด Availability เอง']
-                use_manual_input = st.radio(label="ป้อนค่า Availability", options = option_select)
-                if use_manual_input == 'เลือกช่่วง Availability':
-                    min_avail, max_avail = st.slider("เลือกช่วง Availability (%)", 0, 100, (70, 90), step=1)
-                else:
-                    min_avail = st.number_input("ต่ำสุด (%)", min_value=0, max_value=100, value=70, step=1)
-                    max_avail = st.number_input("สูงสุด (%)", min_value=0, max_value=100, value=90, step=1)
-                filtered_df = df_merged_add[(df_merged_add["Availability (%)"] >= min_avail) & (df_merged_add["Availability (%)"] <= max_avail)]
-                st.markdown("---------")
-            st.dataframe(filtered_df)    
+        #sidebar เลือกอุปกรณ์
+        with st.sidebar:
+            st.header("เลือกอุปกรณ์")
+            # 🔹 ตัวกรอง: เลือกอุปกรณ์ที่ต้องการวิเคราะห์
+            device_list = ["ทั้งหมด"] + list(df_merged_add["Device"].unique())
+            selected_devices = st.multiselect("", device_list, default=["ทั้งหมด"])   
+            # กรองข้อมูลเฉพาะอุปกรณ์ที่เลือก
+            #df_merged_add = df_merged_add[df_merged_add["Device"].isin(selected_devices)]
+            # ตรวจสอบว่าเลือก "ทั้งหมด" หรือไม่
+            if not selected_devices or "ทั้งหมด" in selected_devices:
+                df_merged_add_filter = df_merged_add.copy()  # แสดงข้อมูลทั้งหมด
+            else:
+                df_merged_add_filter = df_merged_add[df_merged_add["Device"].isin(selected_devices)]  # กรองเฉพาะที่เลือก
             st.markdown("---------")
-
-            st.header("จำนวนอุปกรณ์ตามช่วง % Availability")   
+                
+        st.header("Availability (%), จำนวนครั้ง, ระยะเวลา แยกตาม Device")
+        if st.checkbox("📌 เลือก checkbox แสดงข้อมูลทั้งหมด"):
+            st.dataframe(df_merged_add_filter)
+        else:
+            #st.info("📌 เลือก checkbox แสดงข้อมูลทั้งหมด")
+            st.dataframe(df_merged_add_filter.head(50))
+            
+        if st.checkbox("🔍 เลือก checkbox แสดงจำนวนอุปกรณ์แต่ละช่วง Availability"):
             bins = [0, 20, 40, 60, 80, 90, 95, 100]
             labels = ["0-20%", "21-40%", "41-60%", "61-80%", "81-90%", "91-95%", "96-100%"]
             # เพิ่มคอลัมน์ใหม่ "Availability Group" ให้กับ DataFrame
-            df_merged_add["Availability Group"] = pd.cut(df_merged_add["Availability (%)"], bins=bins, labels=labels, right=True)
+            df_merged_add_filter["Availability Group"] = pd.cut(df_merged_add_filter["Availability (%)"], bins=bins, labels=labels, right=True)
             # นับจำนวนอุปกรณ์ในแต่ละกลุ่ม
-            grouped_counts = df_merged_add["Availability Group"].value_counts().sort_index()
+            grouped_counts = df_merged_add_filter["Availability Group"].value_counts().sort_index()
             # แสดงผลเป็น DataFrame หรือ Plotly Chart
-            st.write("📊 จำนวนอุปกรณ์ในแต่ละช่วง Availability:")
-            #st.bar_chart(grouped_counts)
-            st.dataframe(grouped_counts.reset_index().rename(columns={"index": "ช่วง % Availability","Availability Group": "จำนวนอุปกรณ์"}))     
-
-            # 🔹 สร้าง DataFrame สำหรับ Plotly
-            grouped_df = grouped_counts.reset_index()
-            grouped_df.columns = ["ช่วง % Availability", "จำนวนอุปกรณ์"]
-
-            # 🔹 Plotly Bar Chart
-            fig = px.bar(
-                grouped_df,
-                x="ช่วง % Availability",
-                y="จำนวนอุปกรณ์",
-                color="ช่วง % Availability",
-                text="จำนวนอุปกรณ์",
-                title="📊 จำนวนอุปกรณ์ในแต่ละช่วง % Availability",
-            )
-
-            fig.update_layout(
-                xaxis_title="ช่วง % Availability",
-                yaxis_title="จำนวนอุปกรณ์",
-                showlegend=False,
-            )
-
-            #st.plotly_chart(fig, use_container_width=True)
+            st.bar_chart(grouped_counts)
+            st.dataframe(grouped_counts.reset_index().rename(columns={"Availability Group": "ช่วง % Availability","Count": "จำนวนอุปกรณ์"}))
+            if st.checkbox("📊 แสดงกราฟ Plot Availability (%)"):
+                # 🔹 สร้าง DataFrame สำหรับ Plotly
+                grouped_df = grouped_counts.reset_index()
+                grouped_df.columns = ["ช่วง % Availability", "จำนวนอุปกรณ์"]
+                # 🔹 Plotly Bar Chart
+                fig = px.bar(
+                    grouped_df,
+                    x="ช่วง % Availability",
+                    y="จำนวนอุปกรณ์",
+                    color="ช่วง % Availability",
+                    text="จำนวนอุปกรณ์",
+                    title="📊 จำนวนอุปกรณ์ในแต่ละช่วง % Availability",
+                )
+                fig.update_layout(
+                    xaxis_title="ช่วง % Availability",
+                    yaxis_title="จำนวนอุปกรณ์",
+                    showlegend=False,
+                )
+                st.plotly_chart(fig, use_container_width=True)
             
-            #st.write("🔍 อุปกรณ์ในช่วง % Availability ที่เลือก:")
-            #st.dataframe(filtered_df[["Device", "Availability (%)"]].drop_duplicates())
-            #st.markdown("---------")
-
-    
-    
-    
-            st.markdown("---------")
-            
-            with st.sidebar:
-                st.header("เลือกช่วง % Availability")
-                selected_group = st.multiselect("เลือกช่วง % Availability ที่ต้องการดู:", labels)
-                filtered_by_group = df_merged_add[df_merged_add["Availability Group"].isin(selected_group)]
+            labels = ["0-20%", "21-40%", "41-60%", "61-80%", "81-90%", "91-95%", "96-100%"]
+            st.header("เลือกช่วง % Availability")
+            selected_group = st.multiselect("เลือกช่วง % Availability ที่ต้องการดู:", labels)
+            filtered_by_group = df_merged_add_filter[df_merged_add_filter["Availability Group"].isin(selected_group)]
             st.write(f"ข้อมูลอุปกรณ์ ช่วง Availability {selected_group} : {len(filtered_by_group)}")
             st.dataframe(filtered_by_group)
+        st.markdown("---------")
+        
+        #sidebar เลือกค่า Avail เพื่อดู Dataframe
+        # 🔹 ดูรายละเอียดอุปกรณ์ที่ Availability < 80%
+        #bad_devices = df_merged_add_filter[df_merged_add_filter["Availability (%)"] < 80]
+        #st.subheader("😴 รายชื่ออุปกรณ์ที่ Availability ต่ำกว่า 80% (ต้องนอน)")
+        #st.dataframe(bad_devices[["Device", "Availability (%)"]], use_container_width=True)
+        # คำนวณค่าเฉลี่ยของ Availability
+
+        #plot_ava = plot(df_merged_add)
+        #df_merged_add, summary_df, fig_bar, fig_pie = evaluate(df_merged_add)
+       
+        # เพิ่ม filter สำหรับดูเฉพาะ Device ที่ Availability < 90%
+        #threshold = st.slider("Filter by Availability threshold (%)", min_value=0, max_value=100, value=90)
+        #filtered = df_merged_add[df_merged_add["Availability (%)"] < threshold]
+        #st.write(f"Devices with Availability < {threshold}%: {len(filtered)}")
+        #st.dataframe(filtered, use_container_width=True)
+
+        #Function การแสดงผล
+        st.header("เลือกแสดงผล:")
+        option_funct = ['ประเมินผล % Availability', 'ข้อมูลอุปกรณ์ตาม % Availability', 'เลือกช่วง % Availability']
+        selected_funct = st.selectbox("Filter", option_funct, index=0)
+        #cols_select = ['State', 'Description', 'สถานที่', 'การไฟฟ้า', 'ประเภทอุปกรณ์', 'จุดติดตั้ง', 'Master', 'โครงการติดตั้ง']
+        
+        
+        if selected_funct =='ประเมินผล % Availability':       
+            df_eva, summary_df, fig1, fig2 = evaluate(df_merged_add_filter)
+            st.plotly_chart(fig1, use_container_width=True)
+            #st.plotly_chart(fig2, use_container_width=True)
+        elif selected_funct =='ข้อมูลอุปกรณ์ตาม % Availability':
+            min_avail, max_avail = st.slider("เลือกช่วง Availability (%)", 0, 100, (70, 90), step=1)
+            filtered_df = df_merged_add[(df_merged_add["Availability (%)"] >= min_avail) & (df_merged_add["Availability (%)"] <= max_avail)]
+            st.dataframe(filtered_df)
+        elif selected_funct == 'เลือกช่วง % Availability':
+            labels = ["0-20%", "21-40%", "41-60%", "61-80%", "81-90%", "91-95%", "96-100%"]
+            st.header("เลือกช่วง % Availability")
+            selected_group = st.multiselect("เลือกช่วง % Availability ที่ต้องการดู:", labels)
+            filtered_by_group = df_merged_add[df_merged_add["Availability Group"].isin(selected_group)]
+            st.write(f"ข้อมูลอุปกรณ์ ช่วง Availability {selected_group} : {len(filtered_by_group)}")
+            st.dataframe(filtered_by_group)
+        elif selected_funct == "เลือกดูจำนวนครั้ง Device ใน State ต่างๆ":
+            st.write("fff")
+        #st.write("🔍 อุปกรณ์ในช่วง % Availability ที่เลือก:")
+        #st.dataframe(filtered_df[["Device", "Availability (%)"]].drop_duplicates())
+        st.markdown("---------")
+        
             
-            state = ["Online", "Initializing", "Telemetry Failure", "Connecting", "Offline"]
-            with col1:
-                st.metric(label="📈 Avg. Availability (%)", value=f"{df_merged_add['Availability (%)'].mean():.2f} %")
-            with col2:
-                st.metric(label="🔢 Avg. จำนวนครั้ง Initializing", value=f"{df_merged_add['จำนวนครั้ง Initializing'].mean():.2f}")
-            with col3:
-                st.metric(label="🔢 Avg. จำนวนครั้ง Connecting", value=f"{df_merged_add['จำนวนครั้ง Connecting'].mean():.2f}")
-            with col4:
-                st.metric(label="🔢 Avg. จำนวนครั้ง Telemetry Failure", value=f"{df_merged_add['จำนวนครั้ง Telemetry Failure'].mean():.2f}")
+        
+        
+        state = ["Online", "Initializing", "Telemetry Failure", "Connecting", "Offline"]
+        with col1:
+            st.metric(label="📈 Avg. Availability (%)", value=f"{df_merged_add['Availability (%)'].mean():.2f} %")
+        with col2:
+            st.metric(label="🔢 Avg. จำนวนครั้ง Initializing", value=f"{df_merged_add['จำนวนครั้ง Initializing'].mean():.2f}")
+        with col3:
+            st.metric(label="🔢 Avg. จำนวนครั้ง Connecting", value=f"{df_merged_add['จำนวนครั้ง Connecting'].mean():.2f}")
+        with col4:
+            st.metric(label="🔢 Avg. จำนวนครั้ง Telemetry Failure", value=f"{df_merged_add['จำนวนครั้ง Telemetry Failure'].mean():.2f}")
 
 if __name__ == "__main__":
     main()
