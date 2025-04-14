@@ -488,15 +488,14 @@ def main():
                 df.to_excel(writer, index=False, sheet_name='Sheet1')
             processed_data = output.getvalue()
             return processed_data
-        st.markdown("ดาวน์โหลดข้อมูลอุปกรณ์ทั้งหมด")
         excel_data = to_excel(df_group)
         st.download_button(
-            label="📥 ดาวน์โหลดเป็น Excel",
+            label="📥 ดาวน์โหลดข้อมูลอุปกรณ์ทั้งหมด",
             data=excel_data,
             file_name='availability_data.xlsx',
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        
+        st.markdown("---------")
         st.header("Availability (%), จำนวนครั้ง, ระยะเวลา แยกตาม Device")
         if st.checkbox("📌 เลือก checkbox แสดงข้อมูลทั้งหมด"):
             st.dataframe(df_merged_add_filter)

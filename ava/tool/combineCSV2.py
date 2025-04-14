@@ -7,6 +7,8 @@ input_folder = r".\source_csv\Jan"
 output_folder = os.path.join(input_folder, "Output_file")
 output_file = os.path.join(output_folder, "combined_output.csv")
 
+
+
 def combine_csv_recursive(input_folder, output_file):
     try:
         # ตรวจสอบว่าโฟลเดอร์มีอยู่จริง
