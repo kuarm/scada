@@ -38,7 +38,8 @@ def combine_csv(input_folder, output_file):
         print(f"เกิดข้อผิดพลาด: {e}")
 
 # 🔹 กำหนดพาธ
-input_folder = r"D:\Develop\scada\ava\source_csv"
-output_file = r"D:\Develop\scada\ava\source_csv\combined_output.csv"
+input_folder = r"D:\ML\scada\ava\source_csv\CSV_test"
+
+output_file = r"D:\ML\scada\ava\source_csv\CSV_test\Output_file\combined_output_substation.csv"
 
 combine_csv(input_folder, output_file)

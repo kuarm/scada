@@ -3,11 +3,10 @@ import pandas as pd
 import streamlit as st
 
 # 🔹 กำหนดพาธ
-input_folder = r".\source_csv\Jan"
+
+input_folder = "D:/ML/scada/ava/source_csv/CSV_test"
 output_folder = os.path.join(input_folder, "Output_file")
-output_file = os.path.join(output_folder, "combined_output.csv")
-
-
+output_file = os.path.join(output_folder, "combined_output_substation.csv")
 
 def combine_csv_recursive(input_folder, output_file):
     try:
@@ -31,7 +30,7 @@ def combine_csv_recursive(input_folder, output_file):
 
         for file_path in csv_files:
             try:
-                df = pd.read_csv(file_path, skiprows=6)  # ปรับ skiprows ตามต้องการ
+                df = pd.read_csv(file_path, skiprows=0)  # ปรับ skiprows ตามต้องการ
                 df = df.dropna(how="all")  # ✅ ตัดบรรทัดว่างออก
                 if df.empty:
                     st.warning(f"⚠️ ไฟล์ {file_path} ว่างเปล่าหลังจากลบบรรทัดว่าง!")
