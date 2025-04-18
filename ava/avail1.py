@@ -9,8 +9,8 @@ from dateutil.relativedelta import relativedelta
 from pandas import Timestamp
 from io import BytesIO
 
-source_csv = "D:/ML/scada/ava/output_file/S1-REC_JAN-MAR2025.csv"
-source_excel = "D:/ML/scada/ava/source_excel/S1-REC_JAN-MAR2025.xlsx"
+source_csv = "D:/Develop/scada/ava/source_csv/convert_csv/combine_csv/S1_JAN-MAR2025.csv"
+source_excel = "./source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
 cols_event=["Field change time", "Message", "Device"]
@@ -25,20 +25,6 @@ st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="w
 with open('./css/style.css')as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
 
-<<<<<<< HEAD
-# ใช้ scope สำหรับ Google Sheets
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-client = gspread.authorize(creds)
-
-# เปิด Google Sheet ด้วยชื่อหรือ URL
-sheet = client.open("combined_output").worksheet("combined_output")
-
-
-
-
-=======
->>>>>>> 61a4745b0a51f1300a3a9bead846a55b2afa58cf
 @st.cache_data
 def load_data_xls(uploaded_file):
     usecols1 = ["Name", "State", "Description", "Substation"]
@@ -194,8 +180,8 @@ def format_duration(row):
 def calculate_state_summary(df_filtered):
     # ✅ **สรุปผลรวมเวลาแต่ละ State**
     state_duration_summary = df_filtered.groupby("New State", dropna=True)["Adjusted Duration (seconds)"].sum().reset_index()
-    #state_duration_summary[["Days", "Hours", "Minutes", "Seconds"]] = state_duration_summary["Adjusted Duration (seconds)"].apply(lambda x: pd.Series(split_duration(x)))
-    #state_duration_summary["Formatted Duration"] = state_duration_summary.apply(format_duration, axis=1)
+    state_duration_summary[["Days", "Hours", "Minutes", "Seconds"]] = state_duration_summary["Adjusted Duration (seconds)"].apply(lambda x: pd.Series(split_duration(x)))
+    state_duration_summary["Formatted Duration"] = state_duration_summary.apply(format_duration, axis=1)
     state_duration_summary.rename(columns={"New State": "State"}, inplace=True)
     # ✅ **คำนวณ Availability (%)**
     normal_duration = df_filtered[df_filtered["New State"] == normal_state]["Adjusted Duration (seconds)"].sum()
@@ -230,6 +216,7 @@ def calculate_device_availability(df_filtered):
     device_availability[["Total Days", "Total Hours", "Total Minutes", "Total Seconds"]] = device_availability["Total Duration (seconds)"].apply(
         lambda x: pd.Series(split_duration(x)))
     df_merged = calculate_device_count(df_filtered,device_availability)
+    st.dataframe(df_merged)
     return df_merged
 
 @st.cache_data 
@@ -636,11 +623,6 @@ def main():
         #st.dataframe(filtered_df[["Device", "Availability (%)"]].drop_duplicates())
         st.markdown("---------")
         
-            
-        
-        
-            
-
 if __name__ == "__main__":
     main()
         
