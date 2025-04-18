@@ -33,7 +33,7 @@ creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", sco
 client = gspread.authorize(creds)
 
 # เปิด Google Sheet ด้วยชื่อหรือ URL
-sheet = client.open("event").worksheet("Sheet1")
+sheet = client.open("combined_output").worksheet("combined_output")
 
 
 
