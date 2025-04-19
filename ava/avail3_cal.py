@@ -10,7 +10,8 @@ from pandas import Timestamp
 from io import BytesIO
 from io import StringIO
 
-source_csv = "D:/Develop/scada/ava/source_csv/convert_csv/combine_csv/S1_JAN-MAR2025.csv"
+source_csv_event = "D:/Develop/scada/ava/source_csv/convert_csv/combine_csv/S1_JAN-MAR2025.csv"
+source_csv_remote = "D:/Develop/scada/ava/source_csv/RemoteUnit.csv"
 source_excel = "./source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
@@ -221,14 +222,12 @@ def calculate_device_availability(df_filtered):
         lambda x: pd.Series(split_duration(x)))
     device_availability[["Total Days", "Total Hours", "Total Minutes", "Total Seconds"]] = device_availability["Total Duration (seconds)"].apply(
         lambda x: pd.Series(split_duration(x)))
-    df_merged = calculate_device_count(df_filtered,device_availability)
-    st.dataframe(df_merged)
-    return df_merged
+    
+    return device_availability
 
 @st.cache_data 
 #@st.cache
 def calculate_device_count(df_filtered,device_availability):
-    st.dataframe(device_availability)
     # ✅ **จำนวนครั้งที่เกิด State ต่างๆ ของแต่ละ Device**
     #device_availability = calculate_device_availability(df_filtered)  # เพิ่มการคำนวณก่อนใช้งาน
     # คำนวณจำนวนครั้งของแต่ละ State
@@ -243,7 +242,6 @@ def calculate_device_count(df_filtered,device_availability):
         "Telemetry Failure Count", "Telemetry Failure Duration (seconds)",
         "Connecting Count", "Connecting Duration (seconds)"
     ])
-    
     # ✅ **รวมตารางโดยใช้ "Device" เป็น key**
     merged_df = pd.merge(device_availability, summary_df, on="Device", how="left")
     # จัดลำดับคอลัมน์ตามที่ต้องการ
@@ -408,11 +406,12 @@ def main():
             df_event = load_data_xls(uploaded_file)
         else:
             #df_event = load_data_xls(source_excel)
-            df_event = load_data_csv(source_csv)
+            df_event = load_data_csv(source_csv_event)
+            df_remote = load_data_csv(source_csv_remote)
             #df_event = get_as_dataframe(sheet)
             #df_remote = load_parquet(remote_path_parquet)
     
-        if df_event is not None:
+        if df_event is not None and not df_remote.empty:
             #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
             #sidebar เลือกเวลา
             with st.sidebar:
@@ -467,10 +466,10 @@ def main():
         df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
         state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
         device_availability = calculate_device_availability(df_filtered)
-        #df_merged = merge_data(df_remote,device_availability)
+        df_merged = calculate_device_count(df_filtered,device_availability)
+        df_merged = merge_data(df_remote,device_availability)
         #df_merged_add = add_value(df_merged) 
-        df_merged_add = device_availability
-        st.dataframe(df_merged_add)
+        df_merged_add = df_merged
 
         def to_excel(df):
             output = BytesIO()
