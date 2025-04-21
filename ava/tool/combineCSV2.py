@@ -4,9 +4,9 @@ import streamlit as st
 
 # 🔹 กำหนดพาธ
 
-input_folder = "D:/ML/scada/ava/source_csv/CSV_test"
-output_folder = os.path.join(input_folder, "Output_file")
-output_file = os.path.join(output_folder, "combined_output_substation.csv")
+input_folder = "D:/Develop/scada/ava/source_csv/convert_csv"
+output_folder = os.path.join(input_folder, "combine_csv")
+output_file = os.path.join(output_folder, "S1_JAN-MAR2025.csv")
 
 def combine_csv_recursive(input_folder, output_file):
     try:
