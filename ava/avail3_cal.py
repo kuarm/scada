@@ -159,6 +159,9 @@ def adjust_stateandtime(df, startdate, enddate):
     df[["Days", "Hours", "Minutes", "Seconds"]] = df["Adjusted Duration (seconds)"].apply(
         lambda x: pd.Series(split_duration(x), index=["Days", "Hours", "Minutes", "Seconds"]))
     df["Formatted Duration"] = df.apply(format_duration, axis=1)
+    df["Month"] = pd.to_datetime(df["Field change time"], format="%Y-%m", errors='coerce').dt.strftime('%m')
+
+    
     return df
 
 # ✅ **แปลงวินาทีเป็นวัน ชั่วโมง นาที วินาที**
@@ -464,6 +467,7 @@ def main():
         df_filtered = sort_state_chain(df_filtered)
         #initial_date(df_filtered)
         df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
+        st.dataframe(df_filtered)
         state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
         device_availability = calculate_device_availability(df_filtered)
         df_merged = calculate_device_count(df_filtered,device_availability)
