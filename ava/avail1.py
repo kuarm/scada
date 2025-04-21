@@ -458,12 +458,13 @@ def main():
             df_filtered = sort_state_chain(df_filtered)
             #initial_date(df_filtered)
             df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
+            st.dataframe(df_filtered)
             state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
             device_availability = calculate_device_availability(df_filtered)
             #df_merged = merge_data(df_remote,device_availability)
             #df_merged_add = add_value(df_merged) 
             df_merged_add = device_availability
-            st.dataframe(df_merged_add)
+            
             #แสดงค่า ประเมินค่า %Avail, Bar Chart
             df_eva, summary_df, fig1, fig2 = evaluate(df_merged_add,bins_eva,labels_eva)
             #st.dataframe(summary_df)
