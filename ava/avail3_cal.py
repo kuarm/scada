@@ -159,7 +159,7 @@ def adjust_stateandtime(df, startdate, enddate):
     df[["Days", "Hours", "Minutes", "Seconds"]] = df["Adjusted Duration (seconds)"].apply(
         lambda x: pd.Series(split_duration(x), index=["Days", "Hours", "Minutes", "Seconds"]))
     df["Formatted Duration"] = df.apply(format_duration, axis=1)
-    df["Month"] = pd.to_datetime(df["Field change time"], format="%Y-%m", errors='coerce').dt.strftime('%m')
+    df["Month"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce').dt.strftime('%Y-%m')
 
     
     return df
