@@ -10,8 +10,8 @@ from pandas import Timestamp
 from io import BytesIO
 from io import StringIO
 
-source_csv_event = "D:/Develop/scada/ava/source_csv/convert_csv/combine_csv/S1_JAN-MAR2025.csv"
-source_csv_remote = "D:/Develop/scada/ava/source_csv/RemoteUnit.csv"
+source_csv_event = "D:/ML/scada/ava/source_csv/convert_csv/combine_csv/S1_JAN-MAR2025.csv"
+source_csv_remote = "D:/ML/scada/ava/source_csv/RemoteUnit.csv"
 source_excel = "./source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
@@ -47,7 +47,8 @@ def load_data_csv(file_path):
 
 def merge_data(df1,df2):
     df_filters = df1.merge(df2, on="Device", how="outer", suffixes=("_old", ""))
-    #df_filters = df_filters.drop(['State', 'Substation', 'Description'], axis=1, inplace=True) # ลบทีละหลายคอลัมน์ก็ได้
+    #df_filters = df_filters.drop(['Substation'], axis=1, inplace=True) # ลบทีละหลายคอลัมน์ก็ได้
+    df_filters = df_filters.drop(columns=["Substation"])
     return df_filters
 
 # ฟังก์ชันดึงค่า Previous State และ New State และลบจุดท้ายข้อความ
@@ -159,9 +160,7 @@ def adjust_stateandtime(df, startdate, enddate):
     df[["Days", "Hours", "Minutes", "Seconds"]] = df["Adjusted Duration (seconds)"].apply(
         lambda x: pd.Series(split_duration(x), index=["Days", "Hours", "Minutes", "Seconds"]))
     df["Formatted Duration"] = df.apply(format_duration, axis=1)
-    df["Month"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce').dt.strftime('%Y-%m')
-
-    
+    #df["Month_stamp"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce').dt.strftime('%Y-%m')
     return df
 
 # ✅ **แปลงวินาทีเป็นวัน ชั่วโมง นาที วินาที**
@@ -236,7 +235,7 @@ def calculate_device_count(df_filtered,device_availability):
     # คำนวณจำนวนครั้งของแต่ละ State
     state_count = df_filtered[df_filtered["New State"].isin(state)].groupby(["Device", "New State"]).size().unstack(fill_value=0)
     # คำนวณระยะเวลารวมของแต่ละ State
-    state_duration = df_filtered[df_filtered["New State"].isin(abnormal_states)].groupby(["Device", "New State"])["Adjusted Duration (seconds)"].sum().unstack(fill_value=0)
+    state_duration = df_filtered[df_filtered["New State"].isin(state)].groupby(["Device", "New State"])["Adjusted Duration (seconds)"].sum().unstack(fill_value=0)
     # รวมจำนวนครั้งและระยะเวลาของแต่ละ State
     summary_df = state_count.merge(state_duration, left_index=True, right_index=True, suffixes=(" Count", " Duration (seconds)"))
     # จัดลำดับคอลัมน์ให้เป็นไปตามที่ต้องการ
@@ -263,7 +262,7 @@ def calculate_device_count(df_filtered,device_availability):
         "Connecting Count": "จำนวนครั้ง Connecting",
         "Connecting Duration (seconds)": "ระยะเวลา Connecting (seconds)"
     })
-    return merged_df
+    return merged_df, state_count, state_duration
 
 def plot(df):
     # ✅ **BarChart**
@@ -366,7 +365,6 @@ def add_value(df_filters):
         "ผลการประเมิน": "✅ ไม่แฮงค์",
         "Availability Range": "90 < Availability (%) <= 100"
     })
-    df_add_value = df_add_value.drop(columns=["Substation","State"])
     return df_add_value
 
 # กำหนดค่าเริ่มต้นให้ session_state
@@ -393,7 +391,13 @@ def update_dates():
     st.session_state.end_date = st.session_state.end_date
     st.session_state.start_time = st.session_state.start_time
     st.session_state.end_time = st.session_state.end_time
-    
+
+def add_peroid(df, startdate, enddate):
+    period_label = f"{startdate.strftime('%Y-%m')} - {enddate.strftime('%Y-%m')}"
+    #df["Month_stamp"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce').dt.strftime('%Y-%m')
+    df["Availability Period"] = period_label
+    return df, period_label
+
 def main():
     st.title("📊 สถานะอุปกรณ์บนระบบ SCADA/TDMS")
     st.markdown("---------")
@@ -404,13 +408,13 @@ def main():
     if menu_select == option_menu[1]:
         st.header("📊 %ความพร้อมใช้งาน ของอุปกรณ์ในสถานีไฟฟ้า และอุปกรณ์ในระบบฯ")
         #df_event = load_parquet(event_path_parquet)
-        uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx","csv"])
-        if uploaded_file:
-            df_event = load_data_xls(uploaded_file)
-        else:
+        #uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx","csv"])
+        #if uploaded_file:
+        #    df_event = load_data_xls(uploaded_file)
+        #else:
             #df_event = load_data_xls(source_excel)
-            df_event = load_data_csv(source_csv_event)
-            df_remote = load_data_csv(source_csv_remote)
+        df_event = load_data_csv(source_csv_event)
+        df_remote = load_data_csv(source_csv_remote)
             #df_event = get_as_dataframe(sheet)
             #df_remote = load_parquet(remote_path_parquet)
     
@@ -467,39 +471,43 @@ def main():
         df_filtered = sort_state_chain(df_filtered)
         #initial_date(df_filtered)
         df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
-        st.dataframe(df_filtered)
         state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
         device_availability = calculate_device_availability(df_filtered)
-        df_merged = calculate_device_count(df_filtered,device_availability)
-        df_merged = merge_data(df_remote,device_availability)
-        #df_merged_add = add_value(df_merged) 
-        df_merged_add = df_merged
-
+        df_merged, state_count, state_duration = calculate_device_count(df_filtered,device_availability)
+        df_merged = merge_data(df_remote,df_merged)
+        df_merged_add = add_value(df_merged)
+        df_ava_, peroid_name = add_peroid(df_merged_add, start_date, end_date)
+        
         def to_excel(df):
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 df.to_excel(writer, index=False, sheet_name='Sheet1')
             processed_data = output.getvalue()
             return processed_data
-        excel_data = to_excel(df_merged_add)
+        excel_data = to_excel(df_ava_)
+        
+        # ตั้งชื่อ xlsx,csv จากชื่อไฟล์เดิม
+        xlsx_filename = 'availability_data' + '_' + peroid_name + ".xlsx"
+        csv_filename = 'availability_data' + '_' + peroid_name + ".csv"
+        
         st.download_button(
             label="📥 ดาวน์โหลดข้อมูลอุปกรณ์ทั้งหมด",
             data=excel_data,
-            file_name='availability_data.xlsx',
+            file_name=xlsx_filename,
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
 
         def to_csv(df):
             output = StringIO()
-            df.to_csv(output, index=False, encoding='utf-8-sig')  # รองรับภาษาไทย
+            df.to_csv(output, index=False, encoding='utf-8')  # รองรับภาษาไทย
             return output.getvalue()
         # แปลง DataFrame เป็น CSV text
-        csv_data = to_csv(df_merged_add)
+        csv_data = to_csv(df_ava_)
         # ปุ่มดาวน์โหลด CSV
         st.download_button(
             label="📥 ดาวน์โหลดข้อมูลอุปกรณ์ทั้งหมด (CSV)",
             data=csv_data,
-            file_name='availability_data.csv',
+            file_name=csv_filename,
             mime='text/csv'
         )
 if __name__ == "__main__":

@@ -358,7 +358,6 @@ def add_value(df_filters):
         "ผลการประเมิน": "✅ ไม่แฮงค์",
         "Availability Range": "90 < Availability (%) <= 100"
     })
-    df_add_value = df_add_value.drop(columns=["Substation","State"])
     return df_add_value
 
 # กำหนดค่าเริ่มต้นให้ session_state
