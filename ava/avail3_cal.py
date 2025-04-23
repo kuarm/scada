@@ -9,8 +9,10 @@ from dateutil.relativedelta import relativedelta
 from pandas import Timestamp
 from io import BytesIO
 from io import StringIO
+from babel.dates import format_date
 
-source_csv_event = "D:/ML/scada/ava/source_csv/convert_csv/combine_csv/S1_JAN-MAR2025.csv"
+#source_csv_event = "D:/ML/scada/ava/source_csv/convert_csv/combine_csv/S1_JAN-MAR2025.csv"
+source_csv_event = "D:/ML/scada/ava/source_csv/availability_data_ม.ค. 2025.csv"
 source_csv_remote = "D:/ML/scada/ava/source_csv/RemoteUnit.csv"
 source_excel = "./source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
@@ -393,8 +395,23 @@ def update_dates():
     st.session_state.end_time = st.session_state.end_time
 
 def add_peroid(df, startdate, enddate):
-    period_label = f"{startdate.strftime('%Y-%m')} - {enddate.strftime('%Y-%m')}"
-    #df["Month_stamp"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce').dt.strftime('%Y-%m')
+    locale_setting = "th_TH"
+
+    # แปลงเดือนแบบย่อ เช่น ม.ค., ก.พ.
+    start_month = format_date(startdate, format="LLL", locale=locale_setting)
+    end_month = format_date(enddate, format="LLL", locale=locale_setting)
+    
+    start_year = startdate.year
+    end_year = enddate.year
+
+    if start_year == end_year:
+        if startdate.month == enddate.month:
+            period_label = f"{start_month} {start_year}"
+        else:
+            period_label = f"{start_month} - {end_month} {start_year}"
+    else:
+        period_label = f"{start_month} {start_year} - {end_month} {end_year}"
+    
     df["Availability Period"] = period_label
     return df, period_label
 
@@ -417,7 +434,6 @@ def main():
         df_remote = load_data_csv(source_csv_remote)
             #df_event = get_as_dataframe(sheet)
             #df_remote = load_parquet(remote_path_parquet)
-    
         if df_event is not None and not df_remote.empty:
             #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
             #sidebar เลือกเวลา
@@ -477,6 +493,7 @@ def main():
         df_merged = merge_data(df_remote,df_merged)
         df_merged_add = add_value(df_merged)
         df_ava_, peroid_name = add_peroid(df_merged_add, start_date, end_date)
+        #st.dataframe(df_ava_)
         
         def to_excel(df):
             output = BytesIO()
@@ -497,12 +514,19 @@ def main():
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
 
+        df_export = df_ava_.rename(columns={
+            "Device": "อุปกรณ์",
+            "Description": "รายละเอียด",
+            "Availability (%)": "ความพร้อมใช้งาน (%)",
+            "Availability Period": "ช่วงเวลาความพร้อมใช้งาน"
+        })
+        
         def to_csv(df):
             output = StringIO()
-            df.to_csv(output, index=False, encoding='utf-8')  # รองรับภาษาไทย
+            df.to_csv(output, index=False, encoding='utf-8-sig')  # รองรับภาษาไทย
             return output.getvalue()
         # แปลง DataFrame เป็น CSV text
-        csv_data = to_csv(df_ava_)
+        csv_data = to_csv(df_export)
         # ปุ่มดาวน์โหลด CSV
         st.download_button(
             label="📥 ดาวน์โหลดข้อมูลอุปกรณ์ทั้งหมด (CSV)",

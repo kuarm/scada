@@ -10,9 +10,10 @@ from pandas import Timestamp
 from io import BytesIO
 from io import StringIO
 
-source_csv = "D:/ML/scada/ava/source_csv/convert_csv/combine_csv/S1_JAN-MAR2025.csv"
+source_csv = "D:/ML/scada/ava/source_csv/availability_data_ม.ค. 2025.csv"
 bins_eva = [0, 80, 90, 100]
 labels_eva = ["0 <= Availability (%) <= 80", "80 < Availability (%) <= 90", "90 < Availability (%) <= 100"] 
+option_menu = ['สถานะอุปกรณ์','%ความพร้อมใช้งาน', '%การสั่งการ', 'ข้อมูลการสั่งการ']
 
 # Set page
 st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="wide", initial_sidebar_state="expanded", menu_items=None)
@@ -115,8 +116,16 @@ def main():
     st.sidebar.header("Menu:")
     menu_select = st.sidebar.radio(label="", options = option_menu)
     st.sidebar.markdown("---------")
-    
+              
     if menu_select == option_menu[1]:
         st.header("📊 %ความพร้อมใช้งาน ของอุปกรณ์ในสถานีไฟฟ้า และอุปกรณ์ในระบบฯ")
         df = load_data_csv(source_csv)
-        if df is not None and not df.empty:
+
+        if df is not None and not df.empty: 
+            with st.sidebar:
+                # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
+                st.info(f"Menu : {menu_select}")
+                df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce')
+                #start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
+    else:
+        st.write("error")
