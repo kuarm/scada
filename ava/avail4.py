@@ -10,10 +10,11 @@ from pandas import Timestamp
 from io import BytesIO
 from io import StringIO
 
-source_csv = "D:/ML/scada/ava/source_csv/availability_data_ม.ค. 2025.csv"
+source_csv = "D:/ML/scada/ava/source_csv/availability_data.csv"
 bins_eva = [0, 80, 90, 100]
 labels_eva = ["0 <= Availability (%) <= 80", "80 < Availability (%) <= 90", "90 < Availability (%) <= 100"] 
 option_menu = ['สถานะอุปกรณ์','%ความพร้อมใช้งาน', '%การสั่งการ', 'ข้อมูลการสั่งการ']
+option_func = ['ประเมินผล % Availability', 'ข้อมูลอุปกรณ์ตาม % Availability', 'เลือกช่วง % Availability']
 
 # Set page
 st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="wide", initial_sidebar_state="expanded", menu_items=None)
@@ -116,16 +117,48 @@ def main():
     st.sidebar.header("Menu:")
     menu_select = st.sidebar.radio(label="", options = option_menu)
     st.sidebar.markdown("---------")
-              
+            
     if menu_select == option_menu[1]:
         st.header("📊 %ความพร้อมใช้งาน ของอุปกรณ์ในสถานีไฟฟ้า และอุปกรณ์ในระบบฯ")
         df = load_data_csv(source_csv)
-
+        st.dataframe(df)
         if df is not None and not df.empty: 
             with st.sidebar:
                 # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
-                st.info(f"Menu : {menu_select}")
-                df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce')
-                #start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
+                st.info(f"เลือก Menu : {menu_select}")
+                month_options = ["ทั้งหมด"] + list(df["Availability Period"].unique())
+                month_select = st.multiselect("📅 เลือกช่วงเดือน", month_options, default=["ทั้งหมด"])
+                
+                if not month_select or "ทั้งหมด" in month_select:
+                    df_ava = df.copy()  # แสดงข้อมูลทั้งหมด
+                else:
+                    df_ava = df[df["Availability Period"].isin(month_select)]  # กรองเฉพาะที่เลือก
+                st.markdown("---------")
+                
+                st.sidebar.header("Function:")
+                func_select = st.sidebar.radio(label="", options = option_func)
+                st.info(f"เลือก function : {func_select}")
+                
+            if func_select == 'ประเมินผล % Availability': 
+                df_eva, summary_df, fig1, fig2 = evaluate(df_ava,bins_eva,labels_eva)
+                
+                #st.info(f"Menu : {func_select}")
+                #st.plotly_chart(fig1, use_container_width=True)
+                #st.plotly_chart(fig2, use_container_width=True)
+
+            elif func_select == 'ข้อมูลอุปกรณ์ตาม % Availability':
+                min_avail, max_avail = st.slider("เลือกช่วง Availability (%)", 0, 100, (70, 90), step=1)
+                
+                df_filtered = df_ava[(df_ava["Availability (%)"] >= min_avail) & (df_ava["Availability (%)"] <= max_avail)]
+                # แปลงวันที่
+                df_filtered['Availability Period'] = pd.to_datetime(df_filtered['Availability Period'])
+                st.write(df_filtered)
+                #st.dataframe(df_filtered)
+                # Group by ด้วย Device และ Month
+                #grouped = df_filtered.groupby(['Device'])
+                #st.dataframe(grouped)
     else:
         st.write("error")
+
+if __name__ == "__main__":
+    main()
