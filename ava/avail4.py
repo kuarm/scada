@@ -154,7 +154,7 @@ def main():
                 df_filtered['Availability Period'] = pd.to_datetime(df_filtered['Availability Period'])
                 st.write(df_filtered)
                 #st.dataframe(df_filtered)
-                # Group by ด้วย Device และ Month
+                # Group by ด้วย Device และ Month 
                 #grouped = df_filtered.groupby(['Device'])
                 #st.dataframe(grouped)
     else:
