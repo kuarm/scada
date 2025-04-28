@@ -1,6 +1,10 @@
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+from io import StringIO
+from datetime import datetime
+
+st.set_page_config(page_title="Ultra Device Dashboard", layout="wide", page_icon="⚡")
 
 source_csv_feeder = "D:/ML/scada/ava/source_csv/availability_data.csv"
 source_csv_sub = ""
@@ -211,11 +215,166 @@ def main():
                         st.write(df_ava.describe())
                 st.markdown("---------")
             elif func_select == 'ข้อมูลอุปกรณ์ตาม % Availability':
-                min_avail, max_avail = st.slider("เลือกช่วง Availability (%)", 0, 100, (0, 100), step=1)
-                filtered_df = filtered_df[(filtered_df["Availability (%)"] >= min_avail) & (filtered_df["Availability (%)"] <= max_avail)]
+                #min_avail, max_avail = st.slider("เลือกช่วง Availability (%)", 0, 100, (0, 100), step=1)
+                #filtered_df = filtered_df[(filtered_df["Availability (%)"] >= min_avail) & (filtered_df["Availability (%)"] <= max_avail)]
                 
-                # สำหรับเก็บ filter ที่จะ apply
+                
+
+                st.title("📈 Ultra Dashboard - Dynamic Filtering + Export + Save Preset")
+
+                # -----------------------------------
+                # 🔥 เตรียม SessionState
+                # -----------------------------------
+                if "saved_presets" not in st.session_state:
+                    st.session_state.saved_presets = {}
+
+                # สำเนาข้อมูลหลัก
+                df_selection = filtered_df.copy()
+
+                # --------------------------
+                # 🔥 ฟิลเตอร์ Dynamic
+                # --------------------------
+                st.sidebar.header("🎛️ ตัวกรองข้อมูล (Filters)")
+
                 filters = {}
+
+                use_inputbox = st.sidebar.checkbox("✅ ใช้การพิมพ์ตัวเลขแทน Slider", value=False)
+
+                for col in df_selection.columns:
+                    if pd.api.types.is_numeric_dtype(df_selection[col]):
+                        min_val = int(df_selection[col].min())
+                        max_val = int(df_selection[col].max())
+                        if use_inputbox:
+                            min_input = st.sidebar.number_input(f"ใส่ค่าต่ำสุด {col}:", value=min_val, key=f"{col}_min")
+                            max_input = st.sidebar.number_input(f"ใส่ค่าสูงสุด {col}:", value=max_val, key=f"{col}_max")
+                            filters[col] = (min_input, max_input)
+                        else:
+                            selected_range = st.sidebar.slider(
+                                f"เลือกช่วง {col}:", 
+                                min_value=min_val, 
+                                max_value=max_val,
+                                value=(min_val, max_val),
+                                step=1,
+                                key=col
+                            )
+                            filters[col] = selected_range
+                    elif pd.api.types.is_object_dtype(df_selection[col]) or pd.api.types.is_categorical_dtype(df_selection[col]):
+                        options = df_selection[col].dropna().unique().tolist()
+                        selected_options = st.sidebar.multiselect(
+                            f"เลือก {col}:", 
+                            options=options, 
+                            default=options,
+                            key=col
+                        )
+                        filters[col] = selected_options
+
+                # --------------------------
+                # 🔥 Apply Filter
+                # --------------------------
+                for col, condition in filters.items():
+                    if isinstance(condition, tuple):
+                        df_selection = df_selection[
+                            (df_selection[col] >= condition[0]) & (df_selection[col] <= condition[1])
+                        ]
+                    else:
+                        df_selection = df_selection[df_selection[col].isin(condition)]
+
+                st.success(f"🎯 พบ {len(df_selection)} รายการ หลังกรองข้อมูล")
+
+                # --------------------------
+                # 💾 Save Filter Preset
+                # --------------------------
+                preset_name = st.sidebar.text_input("ตั้งชื่อ Preset", "")
+                if st.sidebar.button("💾 Save Preset"):
+                    if preset_name:
+                        st.session_state.saved_presets[preset_name] = filters.copy()
+                        st.sidebar.success(f"✅ บันทึก Preset '{preset_name}' เรียบร้อยแล้ว!")
+                    else:
+                        st.sidebar.warning("⚠️ กรุณาตั้งชื่อก่อนบันทึก Preset")
+
+                # --------------------------
+                # 📂 Load Filter Preset
+                # --------------------------
+                if st.session_state.saved_presets:
+                    selected_preset = st.sidebar.selectbox("📂 โหลด Preset ที่มี", options=["-"] + list(st.session_state.saved_presets.keys()))
+                    if selected_preset != "-" and st.sidebar.button("🔄 Load Preset"):
+                        loaded_filters = st.session_state.saved_presets[selected_preset]
+                        st.experimental_rerun()
+
+                # --------------------------
+                # 📋 เลือกซ่อน/แสดงคอลัมน์
+                # --------------------------
+                with st.expander("🧹 จัดการคอลัมน์ที่ต้องการแสดง/ซ่อน"):
+                    selected_cols = st.multiselect(
+                        "เลือกคอลัมน์ที่ต้องการแสดง:", 
+                        options=list(df_selection.columns), 
+                        default=list(df_selection.columns)
+                    )
+                    df_selection = df_selection[selected_cols]
+
+                st.dataframe(df_selection, use_container_width=True)
+
+                # --------------------------
+                # 📈 กราฟ
+                # --------------------------
+                if not df_selection.empty:
+                    st.subheader("📊 การแสดงผลกราฟ")
+
+                    # --- เลือก Theme
+                    themes = {
+                        "Basic": px.colors.qualitative.Plotly,
+                        "Pastel": px.colors.qualitative.Pastel,
+                        "Bold": px.colors.qualitative.Bold,
+                        "Dark": px.colors.qualitative.Dark2,
+                    }
+                    selected_theme = st.selectbox("🎨 เลือก Theme กราฟ:", list(themes.keys()))
+
+                    y_col = st.selectbox("เลือกคอลัมน์ที่ Plot (Y-axis):", df_selection.select_dtypes(include=['number']).columns)
+                    fig = px.bar(
+                        df_selection,
+                        x="Device",
+                        y=y_col,
+                        text=y_col,
+                        color_discrete_sequence=themes[selected_theme]
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    # ดาวน์โหลดกราฟ
+                    img_bytes = fig.to_image(format="png")
+                    st.download_button(
+                        label="📥 ดาวน์โหลดกราฟ (PNG)",
+                        data=img_bytes,
+                        file_name=f"chart_{datetime.now().strftime('%Y%m%d-%H%M%S')}.png",
+                        mime="image/png"
+                    )
+
+                else:
+                    st.warning("❗ ไม่มีข้อมูลสำหรับสร้างกราฟ โปรดปรับฟิลเตอร์ใหม่")
+
+                # --------------------------
+                # 📥 Download Data as Excel (.xlsx)
+                # --------------------------
+                def to_excel(df):
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                        df.to_excel(writer, index=False, sheet_name="Filtered Data")
+                        workbook = writer.book
+                        worksheet = writer.sheets["Filtered Data"]
+                        for idx, col in enumerate(df.columns):
+                            column_len = max(df[col].astype(str).map(len).max(), len(col))
+                            worksheet.set_column(idx, idx, column_len + 2)
+                    processed_data = output.getvalue()
+                    return processed_data
+
+                excel_data = to_excel(df_selection)
+
+                st.download_button(
+                    label="📥 ดาวน์โหลดข้อมูลเป็น Excel (.xlsx)",
+                    data=excel_data,
+                    file_name=f"filtered_devices_{datetime.now().strftime('%Y%m%d-%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
                 # 🔥 เพิ่มตัวเลือก Filter แบบ multiselect ต่อคอลัมน์
                 #device_options = filtered_df["Device"].unique().tolist()
                 #selected_devices = st.multiselect("เลือกอุปกรณ์ (Device):", options=device_options, default=device_options)
@@ -224,20 +383,7 @@ def main():
                 #selected_descriptions = st.multiselect("เลือก Description:", options=description_options, default=description_options)
                 #st.write(filtered_df.columns)
                 
-                # ✅ เพิ่มตัวกรองช่วงจำนวนครั้ง Initializing
-                if "จำนวนครั้ง Initializing" in filtered_df.columns:
-                    min_init, max_init = int(filtered_df["จำนวนครั้ง Initializing"].min()), int(filtered_df["จำนวนครั้ง Initializing"].max())
-                    selected_init_range = st.slider(
-                        "เลือกช่วง จำนวนครั้ง Initializing:",
-                        min_value=min_init,
-                        max_value=max_init,
-                        value=(min_init, max_init),
-                        step=1
-                    )
-                    filtered_df = filtered_df[
-                        (filtered_df["จำนวนครั้ง Initializing"] >= selected_init_range[0]) &
-                        (filtered_df["จำนวนครั้ง Initializing"] <= selected_init_range[1])
-                    ]
+                
         
                 # กรองข้อมูลตามที่เลือก
                 #filtered_df = filtered_df[
@@ -282,5 +428,3 @@ def main():
             
 if __name__ == "__main__":
     main()
-
-
