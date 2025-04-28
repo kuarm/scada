@@ -375,54 +375,57 @@ def main():
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
 
-                # 🔥 เพิ่มตัวเลือก Filter แบบ multiselect ต่อคอลัมน์
-                #device_options = filtered_df["Device"].unique().tolist()
-                #selected_devices = st.multiselect("เลือกอุปกรณ์ (Device):", options=device_options, default=device_options)
+                # -----------------------------------
+                # 📈📉 Section: Plot ความสัมพันธ์ระหว่าง 2 คอลัมน์
+                # -----------------------------------
+                st.subheader("🔗 วิเคราะห์ความสัมพันธ์ระหว่างคอลัมน์")
 
-                #description_options = filtered_df["จำนวนครั้ง Initializing"].unique().tolist()
-                #selected_descriptions = st.multiselect("เลือก Description:", options=description_options, default=description_options)
-                #st.write(filtered_df.columns)
-                
-                
-        
-                # กรองข้อมูลตามที่เลือก
-                #filtered_df = filtered_df[
-                #    (filtered_df["Device"].isin(selected_devices)) & 
-                #    (filtered_df["Description"].isin(selected_descriptions))
-                #]
-                
-                st.info(f"จำนวน Frtu : {len(filtered_df['Device'])} ชุด")
-                #filtered_by_group = filtered_df[filtered_df["Availability Group"].isin(selected_group)]
-                #devices_counts = filtered_df["Device"].sum()
+                num_cols = df_selection.select_dtypes(include=['number']).columns.tolist()
 
-                #st.dataframe(filtered_df[['Device', 'Availability (%)']].sort_values(by='Availability (%)', ascending=False))
-                #st.dataframe(filtered_df.sort_values(by='Availability (%)', ascending=False))
-                
-                # --- 📈 กราฟ ---
-                fig_bar = px.bar(
-                    filtered_df,
-                    x='Device',
-                    y='Availability (%)',
-                    color='Availability (%)',
-                    title=f"Availability (%) ต่อ Device - {selected_month}",
-                    color_continuous_scale='Greens'
-                )
-                #st.plotly_chart(fig_bar, use_container_width=True)
+                if len(num_cols) >= 2:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        selected_x = st.selectbox("เลือกแกน X-axis:", options=num_cols, key="x_axis_relation")
+                    with col2:
+                        selected_y = st.selectbox("เลือกแกน Y-axis:", options=num_cols, key="y_axis_relation")
 
-                # แปลง Period เป็น string
-                #df['Month'] = df['Month'].astype(str)
-                fig_scatter = px.scatter(
-                    filtered_df,
-                    x='Device',  # แกน X = เดือน
-                    y='Availability (%)',  # แกน Y = Availability
-                    color='Device',  # แยกสีตาม Device
-                    hover_data=['Device', 'Availability (%)'],  # ข้อมูลเมื่อ hover
-                    title='Availability (%) รายเดือนของแต่ละ Device'
-                )
-                fig_scatter.update_traces(mode='markers+lines')  # แสดงทั้งจุดและเส้นเชื่อม
-                fig_scatter.update_layout(xaxis_title='Device', yaxis_title='Availability (%)')
-                #st.plotly_chart(fig_scatter, use_container_width=True)
-                st.markdown("---------")
+                    plot_type = st.radio(
+                        "เลือกประเภทกราฟ:", 
+                        options=["Scatter Plot", "Line Plot", "Bar Plot"], 
+                        horizontal=True,
+                        key="relation_plot_type"
+                    )
+
+                    if selected_x and selected_y:
+                        if plot_type == "Scatter Plot":
+                            fig_relation = px.scatter(
+                                df_selection,
+                                x=selected_x,
+                                y=selected_y,
+                                color_discrete_sequence=["#636EFA"],
+                                trendline="ols", # เพิ่มเส้นเทรนด์ให้ด้วย!
+                                title=f"Scatter Plot ระหว่าง {selected_x} และ {selected_y}"
+                            )
+                        elif plot_type == "Line Plot":
+                            fig_relation = px.line(
+                                df_selection,
+                                x=selected_x,
+                                y=selected_y,
+                                markers=True,
+                                title=f"Line Plot ระหว่าง {selected_x} และ {selected_y}"
+                            )
+                        elif plot_type == "Bar Plot":
+                            fig_relation = px.bar(
+                                df_selection,
+                                x=selected_x,
+                                y=selected_y,
+                                title=f"Bar Plot ระหว่าง {selected_x} และ {selected_y}"
+                            )
+
+                        st.plotly_chart(fig_relation, use_container_width=True)
+                else:
+                    st.warning("⚠️ ต้องมีอย่างน้อย 2 คอลัมน์ตัวเลขเพื่อสร้างกราฟความสัมพันธ์")
+
         else:
             df = load_data_csv(source_csv_sub)
             
