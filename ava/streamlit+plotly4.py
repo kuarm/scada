@@ -112,14 +112,18 @@ if uploaded_file:
     csv = filtered_df.to_csv(index=False, encoding="utf-8-sig")
     st.download_button("📥 ดาวน์โหลดข้อมูลกรองแล้ว", csv, file_name="filtered_data.csv", mime="text/csv")
 
+    # กรองคอลัมน์ออก
+    available_columns = [col for col in filtered_df.columns if col != "Description"]
+
     # --- ส่วนสร้างกราฟ Auto Intelligent
-    st.header("📈 Auto Intelligent Graph Generator")
+    # --- Auto Intelligent Graph Generator (Fix Type Issue)
+    st.header("📈 Auto Intelligent Graph Generator (Ultra++ v4.1)")
 
     col_plot1, col_plot2 = st.columns(2)
     with col_plot1:
-        selected_x = st.selectbox("เลือกแกน X (Auto)", options=filtered_df.columns)
+        selected_x = st.selectbox("เลือกแกน X (Auto)", options=available_columns)
     with col_plot2:
-        selected_y = st.selectbox("เลือกแกน Y (Auto)", options=filtered_df.columns)
+        selected_y = st.selectbox("เลือกแกน Y (Auto)", options=available_columns)
 
     auto_graph_type = st.radio("เลือกรูปแบบแนะนำ", ["Auto Suggest", "กำหนดเอง"], horizontal=True)
 
@@ -127,72 +131,83 @@ if uploaded_file:
         if selected_x == selected_y:
             st.warning("🚫 ต้องเลือก X และ Y คนละคอลัมน์กัน")
         else:
-            if auto_graph_type == "Auto Suggest":
-                # ตรวจสอบประเภทข้อมูล
-                x_dtype = str(filtered_df[selected_x].dtype)
-                y_dtype = str(filtered_df[selected_y].dtype)
+            # เช็คชนิดข้อมูล
+            x_dtype = str(filtered_df[selected_x].dtype)
+            y_dtype = str(filtered_df[selected_y].dtype)
 
-                if "object" in x_dtype and "float" in y_dtype or "int" in y_dtype:
+            # เพิ่ม Safety Check
+            x_is_numeric = "float" in x_dtype or "int" in x_dtype
+            y_is_numeric = "float" in y_dtype or "int" in y_dtype
+
+            if auto_graph_type == "Auto Suggest":
+                if not x_is_numeric and y_is_numeric:
                     graph_type = "Bar"
-                elif "float" in x_dtype or "int" in x_dtype and ("float" in y_dtype or "int" in y_dtype):
+                elif x_is_numeric and y_is_numeric:
                     graph_type = "Scatter"
                 else:
-                    graph_type = "Bar"  # Default fallback
-
+                    graph_type = "Bar"  # fallback default
             else:
-                graph_type = st.selectbox("เลือกประเภทกราฟ (Manual)", ["Scatter", "Line", "Bar", "Box", "Histogram"])
+                possible_graphs = ["Bar", "Box", "Histogram"]
+                if x_is_numeric and y_is_numeric:
+                    possible_graphs = ["Scatter", "Line", "Bar", "Box", "Histogram"]
 
-            # วาดกราฟตามประเภท
-            if graph_type == "Scatter":
-                fig = px.scatter(
-                    filtered_df,
-                    x=selected_x,
-                    y=selected_y,
-                    color_discrete_sequence=["#636EFA"],
-                    trendline="ols",
-                    title=f"Scatter: {selected_x} vs {selected_y}"
-                )
-            elif graph_type == "Line":
-                fig = px.line(
-                    filtered_df,
-                    x=selected_x,
-                    y=selected_y,
-                    markers=True,
-                    color_discrete_sequence=["#EF553B"],
-                    title=f"Line Plot: {selected_x} vs {selected_y}"
-                )
-            elif graph_type == "Bar":
-                fig = px.bar(
-                    filtered_df,
-                    x=selected_x,
-                    y=selected_y,
-                    text_auto=True,
-                    color_discrete_sequence=["#00CC96"],
-                    title=f"Bar Chart: {selected_x} vs {selected_y}"
-                )
-            elif graph_type == "Box":
-                fig = px.box(
-                    filtered_df,
-                    x=selected_x,
-                    y=selected_y,
-                    title=f"Box Plot: {selected_x} vs {selected_y}"
-                )
-            elif graph_type == "Histogram":
-                fig = px.histogram(
-                    filtered_df,
-                    x=selected_x,
-                    title=f"Histogram: {selected_x}"
+                graph_type = st.selectbox("เลือกประเภทกราฟ (Manual)", possible_graphs)
+
+            # วาดกราฟเฉพาะถ้า type ถูกต้อง
+            try:
+                if graph_type == "Scatter":
+                    fig = px.scatter(
+                        filtered_df,
+                        x=selected_x,
+                        y=selected_y,
+                        trendline="ols",
+                        color_discrete_sequence=["#636EFA"],
+                        title=f"Scatter: {selected_x} vs {selected_y}"
+                    )
+                elif graph_type == "Line":
+                    fig = px.line(
+                        filtered_df,
+                        x=selected_x,
+                        y=selected_y,
+                        markers=True,
+                        color_discrete_sequence=["#EF553B"],
+                        title=f"Line Plot: {selected_x} vs {selected_y}"
+                    )
+                elif graph_type == "Bar":
+                    fig = px.bar(
+                        filtered_df,
+                        x=selected_x,
+                        y=selected_y,
+                        text_auto=True,
+                        color_discrete_sequence=["#00CC96"],
+                        title=f"Bar Chart: {selected_x} vs {selected_y}"
+                    )
+                elif graph_type == "Box":
+                    fig = px.box(
+                        filtered_df,
+                        x=selected_x,
+                        y=selected_y,
+                        title=f"Box Plot: {selected_x} vs {selected_y}"
+                    )
+                elif graph_type == "Histogram":
+                    fig = px.histogram(
+                        filtered_df,
+                        x=selected_x,
+                        title=f"Histogram: {selected_x}"
+                    )
+
+                fig.update_layout(
+                    height=600 if len(filtered_df) > 50 else 400,
+                    plot_bgcolor="#F9F9F9",
+                    paper_bgcolor="#F9F9F9",
+                    font=dict(size=14)
                 )
 
-            # อัปเดตขนาดและธีม
-            fig.update_layout(
-                height=600 if len(filtered_df) > 50 else 400,
-                plot_bgcolor="#F9F9F9",
-                paper_bgcolor="#F9F9F9",
-                font=dict(size=14)
-            )
+                st.plotly_chart(fig, use_container_width=True)
 
-            st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"🚨 ไม่สามารถวาดกราฟได้: {e}")
+
 
 else:
     st.warning("🚨 กรุณาอัปโหลดไฟล์เพื่อเริ่มต้นวิเคราะห์")
