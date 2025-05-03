@@ -4,7 +4,7 @@ from io import BytesIO
 
 st.title("📁 รวมไฟล์ Excel หลายไฟล์เป็นไฟล์เดียว")
 
-uploaded_files = st.file_uploader("อัปโหลดหลายไฟล์ Excel", type=["xlsx"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("อัปโหลดหลายไฟล์ Excel", type=["xlsx",'xlsm'], accept_multiple_files=True)
 
 if uploaded_files:
     usecols = ["Field change time", "Message", "Device"]  # เปลี่ยนตามคอลัมน์ที่ต้องการ
@@ -13,6 +13,7 @@ if uploaded_files:
     for file in uploaded_files:
         try:
             df = pd.read_excel(file, usecols=usecols)
+            #df = pd.read_excel(file, sheet_name="Sheet1", engine="openpyxl")
             df["Source File"] = file.name  # บันทึกชื่อไฟล์ต้นทางไว้ด้วย
             all_data.append(df)
         except Exception as e:

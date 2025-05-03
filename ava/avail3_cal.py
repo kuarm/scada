@@ -11,9 +11,16 @@ from io import BytesIO
 from io import StringIO
 from babel.dates import format_date
 
-source_csv_event = "D:/ML/scada/ava/source_csv/availability_data_ม.ค._2025.csv"
+# Set page
+st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="wide", initial_sidebar_state="expanded", menu_items=None)
+with open('./css/style.css')as f:
+    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
+    
+
+
+#source_csv_event = "D:/ML/scada/ava/source_csv/S1-AVR-LBS-RCS-REC_VSP_JAN-MAR2025.csv"
 #source_csv_event = "D:/ML/scada/ava/source_csv/availability_data_ม.ค._2025.csv"
-source_csv_remote = "D:/ML/scada/ava/source_csv/RemoteUnit.csv"
+source_csv_remote = "D:/ML/scada/ava/source_excel/excel file jan-mar/RemoteUnit_01052025_filtered.csv"
 source_excel = "./source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
@@ -24,10 +31,7 @@ state = ["Online", "Initializing", "Telemetry Failure", "Connecting", "Offline"]
 option_menu = ['สถานะอุปกรณ์','%ความพร้อมใช้งาน', '%การสั่งการ', 'ข้อมูลการสั่งการ']
 bins_eva = [0, 80, 90, 100]
 labels_eva = ["0 <= Availability (%) <= 80", "80 < Availability (%) <= 90", "90 < Availability (%) <= 100"] 
-# Set page
-st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="wide", initial_sidebar_state="expanded", menu_items=None)
-with open('./css/style.css')as f:
-    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
+
 
 @st.cache_data
 def load_data_xls(uploaded_file):
@@ -47,10 +51,28 @@ def load_data_csv(file_path):
     df = pd.read_csv(file_path)
     return df
 
-def merge_data(df1,df2):
+def merge_data(df1,df2,flag):
+    df1.rename(columns={"Name": "Device"}, inplace=True)
+    if flag == 'substation':
+        df1 = df1[
+            ((df1["สถานที่ติดตั้ง"] == "สถานีไฟฟ้า")) |
+            ((df1["สถานที่ติดตั้ง"] == "โรงไฟฟ้า") & df1["ประเภทอุปกรณ์"].isin(["SPP-Substation", "VSPP-Substation"]))
+            ]
+    else:
+        df1 = df1[df1["Substation"] == "S1 FRTU"]
+    
     df_filters = df1.merge(df2, on="Device", how="outer", suffixes=("_old", ""))
     #df_filters = df_filters.drop(['Substation'], axis=1, inplace=True) # ลบทีละหลายคอลัมน์ก็ได้
-    df_filters = df_filters.drop(columns=["Substation"])
+    df_filters = df_filters.drop(columns=["Substation","ใช้งาน/ไม่ใช้งาน"], errors='ignore')  # ป้องกันกรณีไม่มีคอลัมน์นี้
+    df_filters = df_filters[[
+    "Device", "Description", "สถานที่", "การไฟฟ้า", "สถานที่ติดตั้ง", "ประเภทอุปกรณ์", 
+    "Availability (%)", 
+    "จำนวนครั้ง Online", "ระยะเวลา Online (seconds)", 
+    "จำนวนครั้ง Connecting","ระยะเวลา Connecting (seconds)",
+    "จำนวนครั้ง Initializing", "ระยะเวลา Initializing (seconds)",
+    "จำนวนครั้ง Telemetry Failure", "ระยะเวลา Telemetry Failure (seconds)",
+    "จำนวนครั้ง Offline", "ระยะเวลา Offline (seconds)" 
+]]
     return df_filters
 
 # ฟังก์ชันดึงค่า Previous State และ New State และลบจุดท้ายข้อความ
@@ -226,7 +248,6 @@ def calculate_device_availability(df_filtered):
         lambda x: pd.Series(split_duration(x)))
     device_availability[["Total Days", "Total Hours", "Total Minutes", "Total Seconds"]] = device_availability["Total Duration (seconds)"].apply(
         lambda x: pd.Series(split_duration(x)))
-    
     return device_availability
 
 @st.cache_data 
@@ -244,25 +265,33 @@ def calculate_device_count(df_filtered,device_availability):
     summary_df = summary_df.reindex(columns=[
         "Initializing Count", "Initializing Duration (seconds)",
         "Telemetry Failure Count", "Telemetry Failure Duration (seconds)",
-        "Connecting Count", "Connecting Duration (seconds)"
+        "Connecting Count", "Connecting Duration (seconds)",
+        "Offline Count", "Offline Duration (seconds)",
+        "Online Count"
     ])
     # ✅ **รวมตารางโดยใช้ "Device" เป็น key**
     merged_df = pd.merge(device_availability, summary_df, on="Device", how="left")
     # จัดลำดับคอลัมน์ตามที่ต้องการ
     merged_df = merged_df[[
         "Device", "Availability (%)",
+        "Online Count", "Online Duration (seconds)",
+        "Connecting Count", "Connecting Duration (seconds)",
         "Initializing Count", "Initializing Duration (seconds)",
         "Telemetry Failure Count", "Telemetry Failure Duration (seconds)",
-        "Connecting Count", "Connecting Duration (seconds)"
+        "Offline Count", "Offline Duration (seconds)" 
     ]]
     # เปลี่ยนชื่อคอลัมน์ตามที่ต้องการ 
     merged_df = merged_df.rename(columns={
+        "Online Count": "จำนวนครั้ง Online", 
+        "Online Duration (seconds)": "ระยะเวลา Online (seconds)",
+        "Connecting Count": "จำนวนครั้ง Connecting",
+        "Connecting Duration (seconds)": "ระยะเวลา Connecting (seconds)",
         "Initializing Count": "จำนวนครั้ง Initializing",
         "Initializing Duration (seconds)": "ระยะเวลา Initializing (seconds)",
         "Telemetry Failure Count": "จำนวนครั้ง Telemetry Failure",
         "Telemetry Failure Duration (seconds)": "ระยะเวลา Telemetry Failure (seconds)",
-        "Connecting Count": "จำนวนครั้ง Connecting",
-        "Connecting Duration (seconds)": "ระยะเวลา Connecting (seconds)"
+        "Offline Count": "จำนวนครั้ง Offline",
+        "Offline Duration (seconds)": "ระยะเวลา Offline (seconds)"
     })
     return merged_df, state_count, state_duration
 
@@ -357,15 +386,19 @@ def add_value(df_filters):
     #df_remote.drop(columns=[col for col in df_remote.columns if col.endswith("_old")], inplace=True)
     df_add_value = df_filters.fillna({
         "Availability (%)": 100.00,
+        "จำนวนครั้ง Online": 0, 
+        "ระยะเวลา Online (seconds)": 0,
+        "จำนวนครั้ง Connecting": 0,
+        "ระยะเวลา Connecting (seconds)": 0,
         "จำนวนครั้ง Initializing": 0,
         "ระยะเวลา Initializing (seconds)": 0,
         "จำนวนครั้ง Telemetry Failure": 0,
         "ระยะเวลา Telemetry Failure (seconds)": 0,
-        "จำนวนครั้ง Connecting": 0,
-        "ระยะเวลา Connecting (seconds)": 0,
-        "เกณฑ์การประเมิน": "90 < Availability (%) <= 100",
-        "ผลการประเมิน": "✅ ไม่แฮงค์",
-        "Availability Range": "90 < Availability (%) <= 100"
+        "จำนวนครั้ง Offline": 0,
+        "ระยะเวลา Offline (seconds)": 0
+        #"เกณฑ์การประเมิน": "90 < Availability (%) <= 100",
+        #"ผลการประเมิน": "✅ ไม่แฮงค์",
+        #"Availability Range": "90 < Availability (%) <= 100"
     })
     return df_add_value
 
@@ -416,39 +449,45 @@ def add_peroid(df, startdate, enddate):
     return df, period_label
 
 def main():
-    st.title("📊 สถานะอุปกรณ์บนระบบ SCADA/TDMS")
-    st.markdown("---------")
-    st.sidebar.header("Menu:")
-    menu_select = st.sidebar.radio(label="", options = option_menu)
-    st.sidebar.markdown("---------")
+    #st.title("📊 สถานะอุปกรณ์บนระบบ SCADA/TDMS")
+    #st.markdown("---------")
+    #st.sidebar.header("Menu:")
+    #menu_select = st.sidebar.radio(label="", options = option_menu)
+    #st.sidebar.markdown("---------")
     
-    if menu_select == option_menu[1]:
-        st.header("📊 %ความพร้อมใช้งาน ของอุปกรณ์ในสถานีไฟฟ้า และอุปกรณ์ในระบบฯ")
-        #df_event = load_parquet(event_path_parquet)
-        #uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx","csv"])
-        #if uploaded_file:
-        #    df_event = load_data_xls(uploaded_file)
-        #else:
-            #df_event = load_data_xls(source_excel)
-        df_event = load_data_csv(source_csv_event)
+    #st.header("📊 %ความพร้อมใช้งาน ของอุปกรณ์ในสถานีไฟฟ้า และอุปกรณ์ในระบบฯ")
+    #df_event = load_parquet(event_path_parquet)
+    #uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx","csv"])
+    uploaded_file = st.file_uploader("📥 อัปโหลดไฟล์ Excel หรือ CSV", type=["xlsx", "csv"])
+    if uploaded_file:
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+            st.success(f"✅ โหลดไฟล์ {uploaded_file.name} เรียบร้อย")
+        else:
+            st.success(f"✅ โหลดไฟล์ {uploaded_file.name} ไม่เรียบร้อย")
+    
+        df_event = df.copy()
+        #df_event = load_data_csv(source_csv_event)
         df_remote = load_data_csv(source_csv_remote)
-        st.dataframe(df_event)
+        df_remote_sub = df_remote.copy()
             #df_event = get_as_dataframe(sheet)
             #df_remote = load_parquet(remote_path_parquet)
         if df_event is not None and not df_remote.empty:
             #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
             #sidebar เลือกเวลา
+            
             with st.sidebar:
                 
                 # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
-                st.info(f"Menu : {menu_select}")
+                #st.info(f"Menu : {menu_select}")
                 #st.header("เลือกช่วงเวลา")
-                df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce')
+                #df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce')
                 #start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
                 #end_date = st.sidebar.date_input("End Date", datetime(2025, 12, 31))
                 # หาค่า min/max จากข้อมูลที่โหลด
                 min_date = df_event["Field change time"].min()
                 max_date = df_event["Field change time"].max()
+            """
                 # แปลงเป็นปี-เดือน
                 month_range = pd.date_range(min_date, max_date, freq='MS')
                 month_options = month_range.strftime('%Y-%m').tolist()
@@ -482,19 +521,31 @@ def main():
                 else:
                     df_event = df_event[df_event["Device"].isin(selected_devices)]  # กรองเฉพาะที่เลือก
                 st.markdown("---------")
-            
+            """
         ###-----Calc-----###
         df_filtered = split_state(df_event)
         df_filtered = sort_state_chain(df_filtered)
         #initial_date(df_filtered)
-        df_filtered = adjust_stateandtime(df_filtered, start_date, end_date)
+        df_filtered = adjust_stateandtime(df_filtered, min_date, max_date)
         state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
         device_availability = calculate_device_availability(df_filtered)
         df_merged, state_count, state_duration = calculate_device_count(df_filtered,device_availability)
-        df_merged = merge_data(df_remote,df_merged)
+        #mode_select = st.radio("Sub or Frtu", options=["substation","frtu"])
+        #if mode_select == 'substation':
+        #    flag = 'substation'
+        #else:
+        #    flag = 'frtu'
+        flag = 'frtu'
+        df_merged = merge_data(df_remote_sub,df_merged,flag)
         df_merged_add = add_value(df_merged)
-        df_ava_, peroid_name = add_peroid(df_merged_add, start_date, end_date)
+        st.dataframe(df_merged_add)
+        #df_ava_, peroid_name = add_peroid(df_merged_add, start_date, end_date)
         #st.dataframe(df_ava_)
+        
+        # ตั้งชื่อ CSV จากชื่อไฟล์เดิม
+        base_name = uploaded_file.name.rsplit('.', 1)[0]
+        xlsx_filename = base_name + "_AVA" + ".xlsx"
+        csv_filename = base_name + "_AVA" + ".csv"
         
         def to_excel(df):
             output = BytesIO()
@@ -502,11 +553,12 @@ def main():
                 df.to_excel(writer, index=False, sheet_name='Sheet1')
             processed_data = output.getvalue()
             return processed_data
-        excel_data = to_excel(df_ava_)
+        
+        excel_data = to_excel(df_merged_add)
         
         # ตั้งชื่อ xlsx,csv จากชื่อไฟล์เดิม
-        xlsx_filename = 'availability_data' + '_' + peroid_name + ".xlsx"
-        csv_filename = 'availability_data' + '_' + peroid_name + ".csv"
+        #xlsx_filename = 'availability_data' + '_' + peroid_name + ".xlsx"
+        #csv_filename = 'availability_data' + '_' + peroid_name + ".csv"
         
         st.download_button(
             label="📥 ดาวน์โหลดข้อมูลอุปกรณ์ทั้งหมด",
@@ -515,7 +567,7 @@ def main():
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
 
-        df_export = df_ava_.rename(columns={
+        df_export = df_merged_add.rename(columns={
             "Device": "อุปกรณ์",
             "Description": "รายละเอียด",
             "Availability (%)": "ความพร้อมใช้งาน (%)",
@@ -524,10 +576,11 @@ def main():
         
         def to_csv(df):
             output = StringIO()
-            df.to_csv(output, index=False, encoding='utf-8-sig')  # รองรับภาษาไทย
+            df.to_csv(output, index=False, encoding='utf-8-sig', float_format="%.2f")  # รองรับภาษาไทย
             return output.getvalue()
+        
         # แปลง DataFrame เป็น CSV text
-        csv_data = to_csv(df_ava_)
+        csv_data = to_csv(df_merged_add)
         # ปุ่มดาวน์โหลด CSV
         st.download_button(
             label="📥 ดาวน์โหลดข้อมูลอุปกรณ์ทั้งหมด (CSV)",

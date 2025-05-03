@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
-st.title("📁 รวมไฟล์ CSV หลายไฟล์เป็นไฟล์ Excel เดียว")
+st.title("📁 รวมไฟล์ CSV หลายไฟล์")
 
 uploaded_files = st.file_uploader("อัปโหลดหลายไฟล์ CSV", type=["csv"], accept_multiple_files=True)
 
@@ -30,7 +30,7 @@ if uploaded_files:
         st.download_button(
             label="📥 ดาวน์โหลดไฟล์ CSV",
             data=csv_output,
-            file_name="merged_data.csv",
+            file_name="S1-SUBSTATION_JAN2025.csv",
             mime="text/csv"
         )
         
