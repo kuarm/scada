@@ -20,7 +20,7 @@ with open('./css/style.css')as f:
 
 #source_csv_event = "D:/ML/scada/ava/source_csv/S1-AVR-LBS-RCS-REC_VSP_JAN-MAR2025.csv"
 #source_csv_event = "D:/ML/scada/ava/source_csv/availability_data_ม.ค._2025.csv"
-source_csv_remote = "D:/ML/scada/ava/source_excel/excel file jan-mar/RemoteUnit_01052025_filtered.csv"
+source_csv_remote = "D:/ML/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
 source_excel = "./source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
@@ -52,6 +52,8 @@ def load_data_csv(file_path):
     return df
 
 def merge_data(df1,df2,flag):
+    st.write(f" merge data: ")
+    st.dataframe(df2)
     df1.rename(columns={"Name": "Device"}, inplace=True)
     if flag == 'substation':
         df1 = df1[
@@ -71,7 +73,7 @@ def merge_data(df1,df2,flag):
     "จำนวนครั้ง Connecting","ระยะเวลา Connecting (seconds)",
     "จำนวนครั้ง Initializing", "ระยะเวลา Initializing (seconds)",
     "จำนวนครั้ง Telemetry Failure", "ระยะเวลา Telemetry Failure (seconds)",
-    "จำนวนครั้ง Offline", "ระยะเวลา Offline (seconds)" 
+    "จำนวนครั้ง Offline", "ระยะเวลา Offline (seconds)", 'Availability Period' 
 ]]
     return df_filters
 
@@ -88,7 +90,7 @@ def split_state(df):
     #df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
     df = df.dropna(subset=["Field change time"])  # ลบแถวที่มี NaT ใน "Field change time"
     #df_filtered = df[(df['Field change time'].between(startdate, enddate))]
-    df_filtered = df[['Field change time', 'Message', 'Device']].sort_values("Field change time").reset_index(drop=True)
+    df_filtered = df[['Field change time', 'Message', 'Device', 'Availability Period']].sort_values("Field change time").reset_index(drop=True)
     #df_filtered['Adjusted Duration (seconds)'] = df_filtered['Adjusted Duration (seconds)'].fillna(0)
     df_filtered[["Previous State", "New State"]] = df_filtered["Message"].apply(lambda x: pd.Series(extract_states(x))) # ใช้ฟังก์ชันในการแยก Previous State และ New State
     #df_filtered['Previous State'], df_filtered['New State'] = zip(*df_filtered['Message'].apply(extract_states))
@@ -234,7 +236,7 @@ def calculate_state_summary(df_filtered):
 def calculate_device_availability(df_filtered):
     # ✅ **คำนวณ Availability (%) ของแต่ละ Device**
     # คำนวณเวลารวมของแต่ละ Device
-    device_total_duration = df_filtered.groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
+    device_total_duration = df_filtered.groupby(["Device"])["Adjusted Duration (seconds)"].sum().reset_index()
     device_total_duration.columns = ["Device", "Total Duration (seconds)"]
     # คำนวณเวลาที่ Device อยู่ในสถานะปกติ
     device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
@@ -261,13 +263,15 @@ def calculate_device_count(df_filtered,device_availability):
     state_duration = df_filtered[df_filtered["New State"].isin(state)].groupby(["Device", "New State"])["Adjusted Duration (seconds)"].sum().unstack(fill_value=0)
     # รวมจำนวนครั้งและระยะเวลาของแต่ละ State
     summary_df = state_count.merge(state_duration, left_index=True, right_index=True, suffixes=(" Count", " Duration (seconds)"))
+    st.write(summary_df)
+    summary_df = summary_df.merge(df_filtered[['Device', 'Availability Period']], on="Device", how="outer", suffixes=("_old", ""))
     # จัดลำดับคอลัมน์ให้เป็นไปตามที่ต้องการ
     summary_df = summary_df.reindex(columns=[
         "Initializing Count", "Initializing Duration (seconds)",
         "Telemetry Failure Count", "Telemetry Failure Duration (seconds)",
         "Connecting Count", "Connecting Duration (seconds)",
         "Offline Count", "Offline Duration (seconds)",
-        "Online Count"
+        "Online Count", "Availability Period"
     ])
     # ✅ **รวมตารางโดยใช้ "Device" เป็น key**
     merged_df = pd.merge(device_availability, summary_df, on="Device", how="left")
@@ -278,7 +282,7 @@ def calculate_device_count(df_filtered,device_availability):
         "Connecting Count", "Connecting Duration (seconds)",
         "Initializing Count", "Initializing Duration (seconds)",
         "Telemetry Failure Count", "Telemetry Failure Duration (seconds)",
-        "Offline Count", "Offline Duration (seconds)" 
+        "Offline Count", "Offline Duration (seconds)", 'Availability Period'
     ]]
     # เปลี่ยนชื่อคอลัมน์ตามที่ต้องการ 
     merged_df = merged_df.rename(columns={
@@ -535,10 +539,11 @@ def main():
         #    flag = 'substation'
         #else:
         #    flag = 'frtu'
-        flag = 'frtu'
+        flag = 'substation'
         df_merged = merge_data(df_remote_sub,df_merged,flag)
         df_merged_add = add_value(df_merged)
-        st.dataframe(df_merged_add)
+        #st.dataframe(df_merged_add)
+        #st.dataframe(df_merged_add)
         #df_ava_, peroid_name = add_peroid(df_merged_add, start_date, end_date)
         #st.dataframe(df_ava_)
         
