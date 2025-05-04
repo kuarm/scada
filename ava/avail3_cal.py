@@ -52,8 +52,8 @@ def load_data_csv(file_path):
     return df
 
 def merge_data(df1,df2,flag):
-    st.write(f" merge data: ")
-    st.dataframe(df2)
+    #st.write(f" merge data: ")
+    #st.dataframe(df2)
     df1.rename(columns={"Name": "Device"}, inplace=True)
     if flag == 'substation':
         df1 = df1[
@@ -73,7 +73,7 @@ def merge_data(df1,df2,flag):
     "จำนวนครั้ง Connecting","ระยะเวลา Connecting (seconds)",
     "จำนวนครั้ง Initializing", "ระยะเวลา Initializing (seconds)",
     "จำนวนครั้ง Telemetry Failure", "ระยะเวลา Telemetry Failure (seconds)",
-    "จำนวนครั้ง Offline", "ระยะเวลา Offline (seconds)", 'Availability Period' 
+    "จำนวนครั้ง Offline", "ระยะเวลา Offline (seconds)" 
 ]]
     return df_filters
 
@@ -255,6 +255,7 @@ def calculate_device_availability(df_filtered):
 @st.cache_data 
 #@st.cache
 def calculate_device_count(df_filtered,device_availability):
+    
     # ✅ **จำนวนครั้งที่เกิด State ต่างๆ ของแต่ละ Device**
     #device_availability = calculate_device_availability(df_filtered)  # เพิ่มการคำนวณก่อนใช้งาน
     # คำนวณจำนวนครั้งของแต่ละ State
@@ -263,8 +264,9 @@ def calculate_device_count(df_filtered,device_availability):
     state_duration = df_filtered[df_filtered["New State"].isin(state)].groupby(["Device", "New State"])["Adjusted Duration (seconds)"].sum().unstack(fill_value=0)
     # รวมจำนวนครั้งและระยะเวลาของแต่ละ State
     summary_df = state_count.merge(state_duration, left_index=True, right_index=True, suffixes=(" Count", " Duration (seconds)"))
-    st.write(summary_df)
-    summary_df = summary_df.merge(df_filtered[['Device', 'Availability Period']], on="Device", how="outer", suffixes=("_old", ""))
+    df_filtered1 = df_filtered[['Device', 'Availability Period']]
+    #summary_df = summary_df.merge(df_filtered1, on="Device", how="outer", suffixes=("_old", ""))
+    #summary_df = pd.merge(summary_df,  df_filtered1, on="Device", how="left")
     # จัดลำดับคอลัมน์ให้เป็นไปตามที่ต้องการ
     summary_df = summary_df.reindex(columns=[
         "Initializing Count", "Initializing Duration (seconds)",
@@ -491,6 +493,8 @@ def main():
                 # หาค่า min/max จากข้อมูลที่โหลด
                 min_date = df_event["Field change time"].min()
                 max_date = df_event["Field change time"].max()
+                month_range = pd.date_range(min_date, max_date, freq='MS')
+                month_options = month_range.strftime('%Y-%m').tolist()
             """
                 # แปลงเป็นปี-เดือน
                 month_range = pd.date_range(min_date, max_date, freq='MS')
@@ -542,6 +546,7 @@ def main():
         flag = 'substation'
         df_merged = merge_data(df_remote_sub,df_merged,flag)
         df_merged_add = add_value(df_merged)
+        df_merged_add['Availability Period'] = month_options[0]
         #st.dataframe(df_merged_add)
         #st.dataframe(df_merged_add)
         #df_ava_, peroid_name = add_peroid(df_merged_add, start_date, end_date)
