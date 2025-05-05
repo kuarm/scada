@@ -22,7 +22,7 @@ def convert_thai_date(date_str):
 # แปลงฟิลด์วันที่
 def convert_date(df):
     df['Availability Period'] = df['Availability Period'].astype(str).apply(convert_thai_date)
-    df['Availability Period'] = pd.to_datetime(df['Availability Period'], format='%m %Y')
+    df['Availability Period'] = pd.to_datetime(df['Availability Period'], format='%Y-%m')
     df['Month'] = df['Availability Period'].dt.to_period('M')
     months = sorted(df['Month'].dropna().unique().astype(str))
     return df, months

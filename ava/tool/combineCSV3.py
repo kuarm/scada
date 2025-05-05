@@ -30,7 +30,7 @@ if uploaded_files:
         st.download_button(
             label="📥 ดาวน์โหลดไฟล์ CSV",
             data=csv_output,
-            file_name="S1-SUBSTATION_APL2025.csv",
+            file_name="S1-SUBSTATION_JAN_MAR_2025.csv",
             mime="text/csv"
         )
         
