@@ -194,74 +194,67 @@ if uploaded_file:
         min_month = df_compare['Month'].min()
         max_month = df_compare['Month'].max()
         
-        # คำนวณค่ากลุ่มรายเดือน
+                # สมมุติว่า df_compare['Month'] ถูกแปลงแล้ว และคำนวณ mean ตามเดือน
         monthly_summary = df_compare.groupby('Month')['Availability (%)'].mean().reset_index()
-        
-        #all_months = pd.date_range(start=min_month, end=max_month, freq='MS')  # MS = Month Start
-        # สร้างช่วงเดือนครบ 12 เดือนในปี 2025
-        all_months = pd.date_range(start="2025-01-01", end="2025-12-01", freq='MS')  # Month Start
-        # สร้าง DataFrame เดือนครบทุกเดือน
-        all_months_df = pd.DataFrame({'Month': all_months})
-        all_months_df['Month_str'] = all_months_df['Month'].dt.strftime('%b %Y')
-        
-        # แปลง monthly_summary ให้มี Month (datetime) และ Month_str
-        monthly_summary['Month'] = pd.to_datetime(monthly_summary['Month'], format="%b %Y")
-        monthly_summary['Month_str'] = monthly_summary['Month'].dt.strftime('%b %Y')
 
-        # Merge ข้อมูลจริงเข้ากับเดือนทั้งหมด
-        monthly_summary_full = pd.merge(all_months_df, monthly_summary, on='Month_str', how='left')
-
-        # แทนค่าที่ไม่มีเป็น 0 (หรือใช้ NaN ก็ได้แล้วแต่กราฟ)
+        # เติมเดือนที่หายไป (ถ้าต้องการให้มีครบ 12 เดือน)
+        all_months = pd.date_range(start="2025-01-01", end="2025-12-01", freq='MS')
+        monthly_summary_full = pd.DataFrame({'Month': all_months})
+        # รวมกับค่าจริงที่ได้จากข้อมูล
+        monthly_summary = df_compare.groupby('Month')['Availability (%)'].mean().reset_index()
+        monthly_summary_full = monthly_summary_full.merge(monthly_summary, on='Month', how='left')
+        #แปลงค่า NaN เป็น 0 หรือใช้วิธี interpolation (เลือกอย่างใดอย่างหนึ่ง)
+        # ทางเลือก 1: เติม 0 แทน NaN
         monthly_summary_full['Availability (%)'] = monthly_summary_full['Availability (%)'].fillna(0)
+        # สร้างชื่อเดือนแบบสวยงาม
+        #monthly_summary_full['Month_str'] = monthly_summary_full['Month'].dt.strftime('%b %Y')
 
-        # เรียงตามลำดับเวลา
-        monthly_summary_full = monthly_summary_full.sort_values('Month_str')
-        
-        # ตาราง
-        st.dataframe(monthly_summary_full[['Month_str', 'Availability (%)']], use_container_width=True)
-
-        # เรียงลำดับตาม Month ที่เป็น datetime
+        # เรียงลำดับให้แน่นอน
         #monthly_summary_full = monthly_summary_full.sort_values('Month')
-        
-        st.write(monthly_summary_full[['Month', 'Month_str']])
-        
-         # Line Chart
-        st.subheader("📊 Availability (%) รายเดือน (เส้น)")
-        # วาดกราฟจาก monthly_summary_full
-        fig_line = px.line(
+
+        # Plot bar chart
+        fig = px.bar(
             monthly_summary_full,
-            x="Month_str",
+            x="Month",
             y="Availability (%)",
-            text="Availability (%)",
+            #text="Availability (%)",
+            text=monthly_summary_full["Availability (%)"].round(1),  # แสดงค่า % บนแท่ง
             color="Availability (%)",
             title="📊 Availability (%) รายเดือน (ครบ 12 เดือน)"
         )
-        fig_line.update_layout(
+
+        # จัดรูปแบบแกน X ให้แสดงชื่อเดือน (เช่น Apr 2025)
+        fig.update_layout(
             xaxis_title="เดือน",
             yaxis_title="Availability (%)",
             yaxis=dict(range=[0, 100]),
-            xaxis_tickmode='array',
-            xaxis_tickvals=monthly_summary_full['Month_str'],
+            xaxis=dict(
+                tickformat="%b %Y",  # แสดง Apr 2025
+                tickmode='linear'
+            ),
             showlegend=False,
         )
-        st.plotly_chart(fig_line, use_container_width=True)
-
-        # Bar Chart
-        st.subheader("📊 Availability (%) รายเดือน (แท่ง)")
-        fig_bar = px.bar(
-            monthly_summary,
-            x="Month_str",
+        st.plotly_chart(fig, use_container_width=True)
+        # plot line graph
+        fig_monthly = px.line(
+            monthly_summary_full,
+            x="Month",
             y="Availability (%)",
-            color="Availability (%)",
-            text="Availability (%)"
+            markers=True,
+            title="📈 Availability (%) รายเดือน (Line Graph)"
         )
-        fig_bar.update_layout(
-            xaxis_title="เดือน",
-            yaxis_title="Availability (%)",
-            yaxis=dict(range=[0, 100]),  # บังคับแกน Y 0-100
-            showlegend=False
+
+        # ปรับแกน X ให้อ่านง่ายและครบ 12 เดือน
+        fig_monthly.update_layout(
+            xaxis=dict(
+                tickformat="%b %Y",  # Apr 2025
+                tickmode="linear",
+                tickangle=-45        # หมุน label แกน X ป้องกันซ้อน
+            ),
+            yaxis=dict(range=[0, 100]),  # สเกล 0-100
+            showlegend=False,
         )
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_monthly, use_container_width=True)
     else:
         st.warning("🚨 ไม่ได้เลือก function")
 
