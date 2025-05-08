@@ -20,7 +20,9 @@ with open('./css/style.css')as f:
 
 #source_csv_event = "D:/ML/scada/ava/source_csv/S1-AVR-LBS-RCS-REC_VSP_JAN-MAR2025.csv"
 #source_csv_event = "D:/ML/scada/ava/source_csv/availability_data_ม.ค._2025.csv"
-source_csv_remote = "D:/ML/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
+#source_csv_remote = "D:/ML/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
+
+source_csv_remote = "D:/Develop/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
 source_excel = "./source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
@@ -221,15 +223,18 @@ def format_duration(row):
 @st.cache_data 
 #@st.cache
 def calculate_state_summary(df_filtered):
+    st.dataframe(df_filtered)
     # ✅ **สรุปผลรวมเวลาแต่ละ State**
     state_duration_summary = df_filtered.groupby("New State", dropna=True)["Adjusted Duration (seconds)"].sum().reset_index()
     state_duration_summary[["Days", "Hours", "Minutes", "Seconds"]] = state_duration_summary["Adjusted Duration (seconds)"].apply(lambda x: pd.Series(split_duration(x)))
     state_duration_summary["Formatted Duration"] = state_duration_summary.apply(format_duration, axis=1)
     state_duration_summary.rename(columns={"New State": "State"}, inplace=True)
     # ✅ **คำนวณ Availability (%)**
+    #normal_duration = df_filtered[df_filtered["New State"] == normal_state]["Adjusted Duration (seconds)"].sum()
     normal_duration = df_filtered[df_filtered["New State"] == normal_state]["Adjusted Duration (seconds)"].sum()
     abnormal_duration = df_filtered[df_filtered["New State"].isin(abnormal_states)]["Adjusted Duration (seconds)"].sum()
     total_duration = df_filtered["Adjusted Duration (seconds)"].sum()
+    
     if total_duration > 0:
         normal_percentage = (normal_duration / total_duration) * 100
         abnormal_percentage = (abnormal_duration / total_duration) * 100
@@ -242,13 +247,19 @@ def calculate_state_summary(df_filtered):
     return state_duration_summary
 
 def calculate_device_availability(df_filtered):
+    #st.dataframe(df_filtered)
+    #st.info(f'normal_duration= {normal_duration}')
+    #st.info(f'abnormal_duration= {abnormal_duration}')
+    #st.info(f'total_duration= {normal_duration + abnormal_duration}')
     # ✅ **คำนวณ Availability (%) ของแต่ละ Device**
     # คำนวณเวลารวมของแต่ละ Device
     device_total_duration = df_filtered.groupby(["Device"])["Adjusted Duration (seconds)"].sum().reset_index()
+    #st.dataframe(device_total_duration)
     device_total_duration.columns = ["Device", "Total Duration (seconds)"]
     # คำนวณเวลาที่ Device อยู่ในสถานะปกติ
     device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
+    #st.dataframe(device_online_duration)
     # รวมข้อมูลทั้งสองตาราง
     device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
     # คำนวณ Availability (%)
@@ -258,6 +269,7 @@ def calculate_device_availability(df_filtered):
         lambda x: pd.Series(split_duration(x)))
     device_availability[["Total Days", "Total Hours", "Total Minutes", "Total Seconds"]] = device_availability["Total Duration (seconds)"].apply(
         lambda x: pd.Series(split_duration(x)))
+    #st.dataframe(device_availability)
     return device_availability
 
 @st.cache_data 
@@ -495,6 +507,15 @@ def main():
             
             st.sidebar.header("เลือกช่วงเวลา")
             with st.sidebar:
+<<<<<<< HEAD
+=======
+                
+                # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
+                #st.info(f"Menu : {menu_select}")
+                #st.header("เลือกช่วงเวลา")
+                df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S", errors='coerce')
+
+>>>>>>> 9a2f27f52e6ceaeed6bd48c97ab1fc3c8184d85e
                 #start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
                 #end_date = st.sidebar.date_input("End Date", datetime(2025, 12, 31))
                 # หาค่า min/max จากข้อมูลที่โหลด
@@ -503,6 +524,7 @@ def main():
                 # แปลงเป็นปี-เดือน
                 month_range = pd.date_range(min_date, max_date, freq='MS')
                 month_options = month_range.strftime('%Y-%m').tolist()
+                
                 if month_options:
                     start_month = st.selectbox("📅 เลือกเดือนเริ่มต้น", month_options, index=0)
                     end_month = st.selectbox("📅 เลือกเดือนสิ้นสุด", month_options, index=len(month_options)-1)
@@ -540,7 +562,7 @@ def main():
                 else:
                     df_event = df_event[df_event["Device"].isin(selected_devices)]  # กรองเฉพาะที่เลือก
                 st.markdown("---------")
-            """
+
         ###-----Calc-----###
         df_filtered = split_state(df_event)
         df_filtered = sort_state_chain(df_filtered)
