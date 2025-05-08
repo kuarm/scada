@@ -395,6 +395,7 @@ def main():
     df_filtered = adjust_stateandtime(df_filtered, startdate, enddate) 
     state_summary = calculate_state_summary(df_filtered)
     device_availability = calculate_device_availability(df_filtered)
+    st.write(device_availability)
     df_merged = merge_data(df_remote,device_availability)
     df_merged_add = add_value(df_merged)
 
@@ -424,15 +425,15 @@ def main():
     with col2:
         st.metric(label="🔢 จำนวนครั้ง Initializing", value=f"{df_merged_add['จำนวนครั้ง Initializing'].mean()}", delta="-10", delta_color="inverse")
 
-    plot_ava = plot(df_merged_add)
-    df_merged_add, summary_df, eva_ava = evaluate(df_merged_add)
-    st.write("### Availability (%), จำนวนครั้ง, ระยะเวลา แยกตาม Device")
+    #plot_ava = plot(df_merged_add)
+    #df_merged_add, summary_df, eva_ava = evaluate(df_merged_add)
+    #st.write("### Availability (%), จำนวนครั้ง, ระยะเวลา แยกตาม Device")
     #st.dataframe(df_merged_add.head())
     # เพิ่ม filter สำหรับดูเฉพาะ Device ที่ Availability < 90%
     threshold = st.slider("Filter by Availability threshold (%)", min_value=0, max_value=100, value=90)
     filtered = df_merged_add[df_merged_add["Availability (%)"] < threshold]
-    st.write(f"Devices with Availability < {threshold}%: {len(filtered)}")
-    st.dataframe(filtered, use_container_width=True)
+    #st.write(f"Devices with Availability < {threshold}%: {len(filtered)}")
+    #st.dataframe(filtered, use_container_width=True)
     #st.write(plot_ava)
     #st.write(eva_ava)
              

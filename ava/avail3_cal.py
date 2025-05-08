@@ -138,8 +138,12 @@ def sort_state_chain(df):
     return pd.concat(result).reset_index(drop=True)
 
 def adjust_stateandtime(df, startdate, enddate):
+
     if df.empty:
         return df  # ถ้า DataFrame ว่าง ให้ return กลับทันที
+    
+    counter_func_first = 0  # ตัวแปรนับรอบ
+    counter_func_last = 0  # ตัวแปรนับรอบ
     df["Next Change Time"] = df["Field change time"].shift(-1) # คำนวณเวลาสิ้นสุดของแต่ละสถานะ
     # ✅ **เพิ่ม State เริ่มต้น ถ้าจำเป็น**
     first_change_time = df["Field change time"].iloc[0]
@@ -152,6 +156,8 @@ def adjust_stateandtime(df, startdate, enddate):
             "New State": [first_state],
             "Next Change Time": [first_change_time]
         })
+        #counter_func_first += 1
+        #st.write(f"counter_func_first: {counter_func_first}")
         #df = pd.concat([new_row, df], ignore_index=True).reindex(columns=df.columns)
         df = pd.concat([new_row, df], ignore_index=True)
     # ✅ **เพิ่ม State สุดท้าย ถ้าจำเป็น**
@@ -166,6 +172,8 @@ def adjust_stateandtime(df, startdate, enddate):
                 "New State": [last_state],
                 "Next Change Time": [enddate]
             })
+            #counter_func_last += 1
+            #st.write(f"counter_func_last: {counter_func_last}")
             #df = pd.concat([df, new_row], ignore_index=True).reindex(columns=df.columns)
             df = pd.concat([new_row, df], ignore_index=True)
     # ปรับเวลาให้อยู่ในช่วงที่กำหนด
@@ -470,51 +478,54 @@ def main():
             df = pd.read_csv(uploaded_file)
             st.success(f"✅ โหลดไฟล์ {uploaded_file.name} เรียบร้อย")
         else:
+            usecols2=["Field change time", "Message", "Device", "Availability Period"]
+            df = pd.read_excel(uploaded_file,skiprows=0,usecols=usecols2)
             st.success(f"✅ โหลดไฟล์ {uploaded_file.name} ไม่เรียบร้อย")
     
         df_event = df.copy()
-        #df_event = load_data_csv(source_csv_event)
         df_remote = load_data_csv(source_csv_remote)
         df_remote_sub = df_remote.copy()
-            #df_event = get_as_dataframe(sheet)
-            #df_remote = load_parquet(remote_path_parquet)
+
         if df_event is not None and not df_remote.empty:
             #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
             #sidebar เลือกเวลา
+            # ✅ แปลงเป็น datetime ก่อนกรอง
+            df_event["Field change time"] = pd.to_datetime(df_event["Field change time"],errors='coerce',dayfirst=True)  # ถ้า format เป็น dd/mm/yyyy)
+            #df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%d/%m/%Y %I:%M:%S", errors='coerce')
             
+            st.sidebar.header("เลือกช่วงเวลา")
             with st.sidebar:
-                
-                # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
-                #st.info(f"Menu : {menu_select}")
-                #st.header("เลือกช่วงเวลา")
-                #df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce')
                 #start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
                 #end_date = st.sidebar.date_input("End Date", datetime(2025, 12, 31))
                 # หาค่า min/max จากข้อมูลที่โหลด
                 min_date = df_event["Field change time"].min()
                 max_date = df_event["Field change time"].max()
-                month_range = pd.date_range(min_date, max_date, freq='MS')
-                month_options = month_range.strftime('%Y-%m').tolist()
-            """
                 # แปลงเป็นปี-เดือน
                 month_range = pd.date_range(min_date, max_date, freq='MS')
                 month_options = month_range.strftime('%Y-%m').tolist()
                 if month_options:
-                    # Sidebar สำหรับเลือกช่วงเดือน
                     start_month = st.selectbox("📅 เลือกเดือนเริ่มต้น", month_options, index=0)
                     end_month = st.selectbox("📅 เลือกเดือนสิ้นสุด", month_options, index=len(month_options)-1)
                     if start_month and end_month:
                         # แปลงเป็น datetime
                         start_date = datetime.strptime(start_month, "%Y-%m")
-                        end_date = datetime.strptime(end_month, "%Y-%m") + relativedelta(months=1) - timedelta(seconds=1)
+                        end_date = datetime.strptime(end_month, "%Y-%m") + relativedelta(months=1) # - timedelta(seconds=1)
                         df_event = df_event[(df_event["Field change time"] >= start_date) & (df_event["Field change time"] <= end_date)]
                     else:
                         st.warning("กรุณาเลือกเดือนเริ่มต้นและสิ้นสุด")
                 else:
                     st.warning("ไม่พบข้อมูลเดือนใน dataset")
-                start_date = Timestamp(start_date)
-                end_date = Timestamp(end_date)
+                start_str = Timestamp(start_date)
+                end_str = Timestamp(end_date)
+            # แสดงผลแบบมี microseconds (ซึ่งครอบคลุม millisecond)
+            start_date = start_str.strftime("%Y-%m-%d %H:%M:%S.%f")
+            end_date = end_str.strftime("%Y-%m-%d %H:%M:%S.%f")
 
+            # แปลงจาก str กลับเป็น datetime
+            start_date = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S.%f")
+            end_date = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S.%f")
+
+            """
             #sidebar เลือกอุปกรณ์
             with st.sidebar:
                 #st.header("เลือกอุปกรณ์")
@@ -533,11 +544,24 @@ def main():
         ###-----Calc-----###
         df_filtered = split_state(df_event)
         df_filtered = sort_state_chain(df_filtered)
+
         #initial_date(df_filtered)
-        df_filtered = adjust_stateandtime(df_filtered, min_date, max_date)
-        state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
-        device_availability = calculate_device_availability(df_filtered)
-        df_merged, state_count, state_duration = calculate_device_count(df_filtered,device_availability)
+
+        adjusted_all = []
+        counter = 0  # ตัวแปรนับรอบ
+        for device_id in df_filtered["Device"].unique():
+            df_device = df_filtered[df_filtered["Device"] == device_id].copy()
+            
+            df_adjusted = adjust_stateandtime(df_device, start_date, end_date)
+            adjusted_all.append(df_adjusted)
+
+        df_combined = pd.concat(adjusted_all, ignore_index=True)
+        st.dataframe(df_combined)
+        
+
+        state_summary = calculate_state_summary(df_combined) #Avail แต่ละ state
+        device_availability = calculate_device_availability(df_combined)
+        df_merged, state_count, state_duration = calculate_device_count(df_combined,device_availability)
         #mode_select = st.radio("Sub or Frtu", options=["substation","frtu"])
         #if mode_select == 'substation':
         #    flag = 'substation'
@@ -548,8 +572,7 @@ def main():
         df_merged_add = add_value(df_merged)
         df_merged_add['Availability Period'] = month_options[0]
         #st.dataframe(df_merged_add)
-        #st.dataframe(df_merged_add)
-        #df_ava_, peroid_name = add_peroid(df_merged_add, start_date, end_date)
+        df_ava_, peroid_name = add_peroid(df_merged_add, start_date, end_date)
         #st.dataframe(df_ava_)
         
         # ตั้งชื่อ CSV จากชื่อไฟล์เดิม
@@ -567,9 +590,9 @@ def main():
         excel_data = to_excel(df_merged_add)
         
         # ตั้งชื่อ xlsx,csv จากชื่อไฟล์เดิม
-        #xlsx_filename = 'availability_data' + '_' + peroid_name + ".xlsx"
-        #csv_filename = 'availability_data' + '_' + peroid_name + ".csv"
-        
+        xlsx_filename = 'availability_data' + '_' + peroid_name + ".xlsx"
+        csv_filename = 'availability_data' + '_' + peroid_name + ".csv"
+
         st.download_button(
             label="📥 ดาวน์โหลดข้อมูลอุปกรณ์ทั้งหมด",
             data=excel_data,
@@ -598,6 +621,7 @@ def main():
             file_name=csv_filename,
             mime='text/csv'
         )
+
 if __name__ == "__main__":
     main()
         
