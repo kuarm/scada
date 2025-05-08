@@ -92,7 +92,9 @@ def split_state(df):
     #df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f %p", errors='coerce')
     df = df.dropna(subset=["Field change time"])  # ลบแถวที่มี NaT ใน "Field change time"
     #df_filtered = df[(df['Field change time'].between(startdate, enddate))]
-    df_filtered = df[['Field change time', 'Message', 'Device', 'Availability Period']].sort_values("Field change time").reset_index(drop=True)
+    df_filtered = df[['Field change time', 'Message', 'Device']].sort_values("Field change time").reset_index(drop=True)
+    
+
     #df_filtered['Adjusted Duration (seconds)'] = df_filtered['Adjusted Duration (seconds)'].fillna(0)
     df_filtered[["Previous State", "New State"]] = df_filtered["Message"].apply(lambda x: pd.Series(extract_states(x))) # ใช้ฟังก์ชันในการแยก Previous State และ New State
     #df_filtered['Previous State'], df_filtered['New State'] = zip(*df_filtered['Message'].apply(extract_states))
@@ -140,8 +142,17 @@ def sort_state_chain(df):
     return pd.concat(result).reset_index(drop=True)
 
 def adjust_stateandtime(df, startdate, enddate):
+
+    # แปลงให้เป็น datetime ถ้ายังเป็น str อยู่
+    if isinstance(startdate, str):
+        startdate = pd.to_datetime(startdate)
+
+    if isinstance(enddate, str):
+        enddate = pd.to_datetime(enddate)
+
     if df.empty:
-        return df  # ถ้า DataFrame ว่าง ให้ return กลับทันที
+        return df
+
     df["Next Change Time"] = df["Field change time"].shift(-1) # คำนวณเวลาสิ้นสุดของแต่ละสถานะ
     # ✅ **เพิ่ม State เริ่มต้น ถ้าจำเป็น**
     first_change_time = df["Field change time"].iloc[0]
@@ -152,7 +163,8 @@ def adjust_stateandtime(df, startdate, enddate):
             "Field change time": [startdate],
             "Previous State": [first_state],
             "New State": [first_state],
-            "Next Change Time": [first_change_time]
+            "Next Change Time": [first_change_time],
+            "Message": df["Message"].iloc[0]
         })
         #df = pd.concat([new_row, df], ignore_index=True).reindex(columns=df.columns)
         df = pd.concat([new_row, df], ignore_index=True)
@@ -166,7 +178,8 @@ def adjust_stateandtime(df, startdate, enddate):
                 "Field change time": [last_change_time],
                 "Previous State": [last_state],
                 "New State": [last_state],
-                "Next Change Time": [enddate]
+                "Next Change Time": [enddate],
+                "Message": df["Message"].iloc[-1]
             })
             #df = pd.concat([df, new_row], ignore_index=True).reindex(columns=df.columns)
             df = pd.concat([new_row, df], ignore_index=True)
@@ -189,6 +202,7 @@ def adjust_stateandtime(df, startdate, enddate):
         lambda x: pd.Series(split_duration(x), index=["Days", "Hours", "Minutes", "Seconds"]))
     df["Formatted Duration"] = df.apply(format_duration, axis=1)
     #df["Month_stamp"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce').dt.strftime('%Y-%m')
+    df = df.sort_values("Field change time").reset_index(drop=True) # Sort data by time
     return df
 
 # ✅ **แปลงวินาทีเป็นวัน ชั่วโมง นาที วินาที**
@@ -215,7 +229,6 @@ def format_duration(row):
 @st.cache_data 
 #@st.cache
 def calculate_state_summary(df_filtered):
-    st.dataframe(df_filtered)
     # ✅ **สรุปผลรวมเวลาแต่ละ State**
     state_duration_summary = df_filtered.groupby("New State", dropna=True)["Adjusted Duration (seconds)"].sum().reset_index()
     state_duration_summary[["Days", "Hours", "Minutes", "Seconds"]] = state_duration_summary["Adjusted Duration (seconds)"].apply(lambda x: pd.Series(split_duration(x)))
@@ -239,7 +252,7 @@ def calculate_state_summary(df_filtered):
     return state_duration_summary
 
 def calculate_device_availability(df_filtered):
-    #st.dataframe(df_filtered)
+    st.dataframe(df_filtered)
     #st.info(f'normal_duration= {normal_duration}')
     #st.info(f'abnormal_duration= {abnormal_duration}')
     #st.info(f'total_duration= {normal_duration + abnormal_duration}')
@@ -251,7 +264,7 @@ def calculate_device_availability(df_filtered):
     # คำนวณเวลาที่ Device อยู่ในสถานะปกติ
     device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
-    #st.dataframe(device_online_duration)
+    st.dataframe(device_online_duration)
     # รวมข้อมูลทั้งสองตาราง
     device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
     # คำนวณ Availability (%)
@@ -276,7 +289,7 @@ def calculate_device_count(df_filtered,device_availability):
     state_duration = df_filtered[df_filtered["New State"].isin(state)].groupby(["Device", "New State"])["Adjusted Duration (seconds)"].sum().unstack(fill_value=0)
     # รวมจำนวนครั้งและระยะเวลาของแต่ละ State
     summary_df = state_count.merge(state_duration, left_index=True, right_index=True, suffixes=(" Count", " Duration (seconds)"))
-    df_filtered1 = df_filtered[['Device', 'Availability Period']]
+    #df_filtered1 = df_filtered[['Device', 'Availability Period']]
     #summary_df = summary_df.merge(df_filtered1, on="Device", how="outer", suffixes=("_old", ""))
     #summary_df = pd.merge(summary_df,  df_filtered1, on="Device", how="left")
     # จัดลำดับคอลัมน์ให้เป็นไปตามที่ต้องการ
@@ -482,6 +495,8 @@ def main():
             df = pd.read_csv(uploaded_file)
             st.success(f"✅ โหลดไฟล์ {uploaded_file.name} เรียบร้อย")
         else:
+            usecols2=["Field change time", "Message", "Device"]
+            df = pd.read_excel(uploaded_file,usecols=usecols2)
             st.success(f"✅ โหลดไฟล์ {uploaded_file.name} ไม่เรียบร้อย")
     
         df_event = df.copy()
@@ -493,39 +508,62 @@ def main():
         if df_event is not None and not df_remote.empty:
             #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
             #sidebar เลือกเวลา
-            
+            #df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%Y-%m-%d %I:%M:%S.%f", errors='coerce')
+            df_event["Field change time"] = pd.to_datetime(df_event["Field change time"],errors='coerce',dayfirst=True)
+            # แสดงค่าพร้อม millisecond
+            df_event["Field change time"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+
             with st.sidebar:
                 
                 # ✅ **ให้ผู้ใช้เลือก Start Time และ End Time**
                 #st.info(f"Menu : {menu_select}")
                 #st.header("เลือกช่วงเวลา")
-                df["Field change time"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S", errors='coerce')
+            
+            
+                #df_event["Field change time"] = pd.to_datetime(df_event["Field change time"],errors='coerce',dayfirst=True)
 
                 #start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
                 #end_date = st.sidebar.date_input("End Date", datetime(2025, 12, 31))
                 # หาค่า min/max จากข้อมูลที่โหลด
                 min_date = df_event["Field change time"].min()
                 max_date = df_event["Field change time"].max()
+
                 # แปลงเป็นปี-เดือน
                 month_range = pd.date_range(min_date, max_date, freq='MS')
-                month_options = month_range.strftime('%Y-%m').tolist()
-                
+                #month_options = month_range.strftime('%Y-%m').tolist()
+                month_options = ['2025-01', '2025-02', '2025-03']
+
                 if month_options:
                     # Sidebar สำหรับเลือกช่วงเดือน
-                    start_month = st.selectbox("📅 เลือกเดือนเริ่มต้น", month_options, index=0)
+                    start_month = st.selectbox("📅 เลือกเดือนเริ่มต้น", month_options, index=0) #ได้ String
                     end_month = st.selectbox("📅 เลือกเดือนสิ้นสุด", month_options, index=len(month_options)-1)
+
                     if start_month and end_month:
                         # แปลงเป็น datetime
                         start_date = datetime.strptime(start_month, "%Y-%m")
-                        end_date = datetime.strptime(end_month, "%Y-%m") + relativedelta(months=1) - timedelta(seconds=1)
-                        df_event = df_event[(df_event["Field change time"] >= start_date) & (df_event["Field change time"] <= end_date)]
+                        end_date = datetime.strptime(end_month, "%Y-%m") + relativedelta(months=1) # - timedelta(seconds=1)
+
+                        start_date1 = start_date.strftime("%Y-%m-%d %H:%M:%S.%f") #datetime object
+                        end_date1 = end_date.strftime("%Y-%m-%d %H:%M:%S.%f")
+
+                        
+                        df_event = df_event[(df_event["Field change time"] >= start_date1) & (df_event["Field change time"] <= end_date1)]
                     else:
                         st.warning("กรุณาเลือกเดือนเริ่มต้นและสิ้นสุด")
                 else:
                     st.warning("ไม่พบข้อมูลเดือนใน dataset")
-                start_date = Timestamp(start_date)
-                end_date = Timestamp(end_date)
+                
+                #start_str = Timestamp(start_date)
+                #end_str = Timestamp(end_date)
 
+            #start_date = start_str.strftime("%Y-%m-%d %H:%M:%S.%f") .strftime() ใช้กับ datetime object 
+            #end_date = end_str.strftime("%Y-%m-%d %H:%M:%S.%f")
+
+            # แปลงจาก str กลับเป็น datetime
+            #start_date = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S.%f")
+            #end_date = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S.%f")
+
+            """
             #sidebar เลือกอุปกรณ์
             with st.sidebar:
                 #st.header("เลือกอุปกรณ์")
@@ -540,15 +578,22 @@ def main():
                 else:
                     df_event = df_event[df_event["Device"].isin(selected_devices)]  # กรองเฉพาะที่เลือก
                 st.markdown("---------")
-
+            """
+        
         ###-----Calc-----###
-        df_filtered = split_state(df_event)
-        df_filtered = sort_state_chain(df_filtered)
-        #initial_date(df_filtered)
-        df_filtered = adjust_stateandtime(df_filtered, min_date, max_date)
-        state_summary = calculate_state_summary(df_filtered) #Avail แต่ละ state
-        device_availability = calculate_device_availability(df_filtered)
-        df_merged, state_count, state_duration = calculate_device_count(df_filtered,device_availability)
+        df_split = split_state(df_event)
+        df_filtered = sort_state_chain(df_split)
+        adjusted_all = []
+
+        for device_id in df_filtered["Device"].unique():
+            df_device = df_filtered[df_filtered["Device"] == device_id].copy()
+            df_adjusted = adjust_stateandtime(df_device, start_date1, end_date1)
+            adjusted_all.append(df_adjusted)
+        df_combined = pd.concat(adjusted_all, ignore_index=True)
+
+        state_summary = calculate_state_summary(df_combined) #Avail แต่ละ state
+        device_availability = calculate_device_availability(df_combined)
+        df_merged, state_count, state_duration = calculate_device_count(df_combined,device_availability)
         #mode_select = st.radio("Sub or Frtu", options=["substation","frtu"])
         #if mode_select == 'substation':
         #    flag = 'substation'
@@ -556,9 +601,12 @@ def main():
         #    flag = 'frtu'
         flag = 'substation'
         df_merged = merge_data(df_remote_sub,df_merged,flag)
+        st.info("Merge: ")
+        st.dataframe(df_merged)
         df_merged_add = add_value(df_merged)
         df_merged_add['Availability Period'] = month_options[0]
-        #st.dataframe(df_merged_add)
+        df_merged_add = df_merged_add.round(2)
+
         #st.dataframe(df_merged_add)
         #df_ava_, peroid_name = add_peroid(df_merged_add, start_date, end_date)
         #st.dataframe(df_ava_)
