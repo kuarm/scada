@@ -20,9 +20,9 @@ with open('./css/style.css')as f:
 
 #source_csv_event = "D:/ML/scada/ava/source_csv/S1-AVR-LBS-RCS-REC_VSP_JAN-MAR2025.csv"
 #source_csv_event = "D:/ML/scada/ava/source_csv/availability_data_ม.ค._2025.csv"
-#source_csv_remote = "D:/ML/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
+source_csv_remote = "D:/ML/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
 
-source_csv_remote = "D:/Develop/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
+#source_csv_remote = "D:/Develop/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
 source_excel = "./source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
