@@ -1,12 +1,9 @@
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+import plotly.graph_objects as go
 
 
-
-
-
-uploaded_file = st.file_uploader("📥 อัปโหลดไฟล์ Excel หรือ CSV", type=["xlsx", "csv"])
 
 def evaluate(df,bins,labels):
     # เพิ่มคอลัมน์ "เกณฑ์การประเมิน"
@@ -14,11 +11,11 @@ def evaluate(df,bins,labels):
     # กำหนดเงื่อนไขสำหรับผลการประเมิน
     def evaluate_result(row):
         if row["เกณฑ์การประเมิน"] == "90 < Availability (%) <= 100":
-            return "✅ ไม่แฮงค์"
+            return "✅"
         elif row["เกณฑ์การประเมิน"] == "80 < Availability (%) <= 90":
-            return "⚠️ ทรงๆ"
+            return "⚠️"
         else:
-            return "❌ ต้องนอน"
+            return "❌"
     # เพิ่มคอลัมน์ "ผลการประเมิน"
     df["ผลการประเมิน"] = df.apply(evaluate_result, axis=1)
     # สรุปจำนวน Device ในแต่ละเกณฑ์
@@ -44,6 +41,7 @@ def evaluate(df,bins,labels):
 
     cols = ['เกณฑ์การประเมิน','ผลการประเมิน'] + [col for col in df.columns if col != 'เกณฑ์การประเมิน' and 
                                                  col != 'ผลการประเมิน']
+    cols_show = ["ผลการประเมิน", "เกณฑ์การประเมิน", "Device+Percent"]
     #df = df[[
     #    "เกณฑ์การประเมิน", "Device", "description", "Availability (%)",
     #    "Initializing Count", "Initializing Duration (seconds)",
@@ -67,7 +65,15 @@ def evaluate(df,bins,labels):
     # ✅ Format ตัวเลขสวยๆ
     summary_df["จำนวน Device"] = summary_df["จำนวน Device"].apply(lambda x: f"{x:,}")
     summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].apply(lambda x: f"{x:.2f}%")
-    
+    summary_df["Device+Percent"] = summary_df.apply(
+        lambda row: f"{row['จำนวน Device']} ({row['เปอร์เซ็นต์ (%)']})", axis=1
+        )
+    summary_df = summary_df[["ผลการประเมิน", 
+                            "เกณฑ์การประเมิน",
+                            "จำนวน Device",
+                            "เปอร์เซ็นต์ (%)",
+                            "Device+Percent"]]
+    show_df = summary_df.copy()[cols_show]
     fig1 = px.bar(
         #summary_df[summary_df["เกณฑ์การประเมิน"] != "รวมทั้งหมด"],  # ไม่เอาแถวรวมทั้งหมดไป plot,
         summary_df,
@@ -87,7 +93,7 @@ def evaluate(df,bins,labels):
         hole=0.4
     )
     fig2.update_traces(textinfo='percent+label')
-    return df, summary_df, fig1, fig2
+    return df, summary_df, fig1, fig2, show_df
 
 def range_ava(df,bins,labels):
     filtered_df["Availability Group"] = pd.cut(filtered_df["Availability (%)"], bins=bins_bar, labels=labels_bar, right=True)
@@ -127,14 +133,17 @@ def convert_date(df):
     months = sorted(df['Month'].dropna().unique().astype(str))
     return df, months
 
+uploaded_file = st.file_uploader("📥 อัปโหลดไฟล์ Excel หรือ CSV", type=["xlsx", "csv"])
+
 if uploaded_file:
     if uploaded_file.name.endswith('.csv'):
         df = pd.read_csv(uploaded_file, encoding="utf-8-sig")
+        st.success(f"✅ โหลดไฟล์ {uploaded_file.name} เรียบร้อย")
     else:
         df = pd.read_excel(uploaded_file)
-     
+        st.success(f"✅ โหลดไฟล์ {uploaded_file.name} ไม่เรียบร้อย")
+        
     df_filtered, months = convert_date(df)
-    st.success(f"✅ โหลดไฟล์ {uploaded_file.name} เรียบร้อย")
     
     option_func = ['สถานะ', 'ประเมินผล', 'Histogram', 'เปรียบเทียบทุกเดือน']
     option_submenu = ['ระบบจำหน่ายสายส่ง','สถานีไฟฟ้า']
@@ -151,9 +160,39 @@ if uploaded_file:
         labels_eva = ["0 <= Availability (%) <= 80", "80 < Availability (%) <= 90", "90 < Availability (%) <= 100"]
         cols = "จำนวน " + title
         df_evaluate = df_filtered.copy()
-        df_eva, summary_df, fig1, fig2 = evaluate(df_evaluate,bins_eva,labels_eva)
-        summary_df.rename(columns={"จำนวน Device": cols}, inplace=True)
-        st.write(summary_df)
+        df_eva, summary_df, fig1, fig2, show_df = evaluate(df_evaluate,bins_eva,labels_eva)
+        show_df.rename(columns={"Device+Percent": cols}, inplace=True)
+        st.markdown("### 🔹 ผลการประเมิน Availability (%) ของอุปกรณ์ในสถานีไฟฟ้า")
+        st.dataframe(show_df)
+        header_colors = ['#003366', '#006699', '#0099CC']   # สีหัวตาราง
+        cell_colors = ['#E6F2FF', '#D9F2D9', '#FFF2CC']     # สีพื้นหลังเซลล์แต่ละคอลัมน์
+        fig = go.Figure(data=[go.Table(
+            header=dict(
+                values=["<b>ผลการประเมิน</b>", "<b>เกณฑ์การประเมิน</b>", f"<b>{cols}</b>"],
+                fill_color=header_colors,
+                align='center',
+                font=dict(color='white', size=14)
+                ),
+                cells=dict(
+                    values=[
+                        summary_df["ผลการประเมิน"],
+                        summary_df["เกณฑ์การประเมิน"],
+                        summary_df["Device+Percent"]
+                        ],
+                        fill_color=[cell_colors[0]] * len(summary_df.columns),
+                        align='center',
+                        font=dict(color='black', size=13)
+                        )
+                        )])
+
+        fig.update_layout(
+            title_text=f"🔹 ผลการประเมิน Availability (%) ของ {cols}",
+            title_x=0.5,
+            title_font_size=20,
+            margin=dict(t=60, b=20)
+            )
+        st.plotly_chart(fig, use_container_width=True)
+
     elif func_select == 'Histogram':
         bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         labels = [f"{bins[i]}-{bins[i+1]} %" for i in range(len(bins)-1)]  # ["0-10", "10-20", ..., "90-100"]

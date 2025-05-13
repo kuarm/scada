@@ -16,13 +16,7 @@ st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="w
 with open('./css/style.css')as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
     
-
-
-#source_csv_event = "D:/ML/scada/ava/source_csv/S1-AVR-LBS-RCS-REC_VSP_JAN-MAR2025.csv"
-#source_csv_event = "D:/ML/scada/ava/source_csv/availability_data_ม.ค._2025.csv"
 source_csv_remote = "D:/ML/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
-
-#source_csv_remote = "D:/Develop/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
 source_excel = "./source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
@@ -33,7 +27,6 @@ state = ["Online", "Initializing", "Telemetry Failure", "Connecting", "Offline"]
 option_menu = ['สถานะอุปกรณ์','%ความพร้อมใช้งาน', '%การสั่งการ', 'ข้อมูลการสั่งการ']
 bins_eva = [0, 80, 90, 100]
 labels_eva = ["0 <= Availability (%) <= 80", "80 < Availability (%) <= 90", "90 < Availability (%) <= 100"] 
-
 
 @st.cache_data
 def load_data_xls(uploaded_file):
@@ -256,7 +249,6 @@ def calculate_state_summary(df_filtered):
     return state_duration_summary
 
 def calculate_device_availability(df_filtered):
-    st.dataframe(df_filtered)
     #st.info(f'normal_duration= {normal_duration}')
     #st.info(f'abnormal_duration= {abnormal_duration}')
     #st.info(f'total_duration= {normal_duration + abnormal_duration}')
@@ -268,7 +260,8 @@ def calculate_device_availability(df_filtered):
     # คำนวณเวลาที่ Device อยู่ในสถานะปกติ
     device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
-    st.dataframe(device_online_duration)
+    #st.dataframe(df_filtered)
+    #st.dataframe(device_online_duration)
     # รวมข้อมูลทั้งสองตาราง
     device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
     # คำนวณ Availability (%)
@@ -466,8 +459,8 @@ def add_peroid(df, startdate, enddate):
     locale_setting = "th_TH"
 
     # แปลงเดือนแบบย่อ เช่น ม.ค., ก.พ.
-    start_month = format_date(startdate, format="LLL", locale=locale_setting)
-    end_month = format_date(enddate, format="LLL", locale=locale_setting)
+    start_month = format_date(startdate, format="LLL")
+    end_month = format_date(enddate, format="LLL")
     
     start_year = startdate.year
     end_year = enddate.year
@@ -521,11 +514,12 @@ def main():
                 # หาค่า min/max จากข้อมูลที่โหลด
                 min_date = df_event["Field change time"].min()
                 max_date = df_event["Field change time"].max()
+                st.write(max_date)
 
                 # แปลงเป็นปี-เดือน
                 month_range = pd.date_range(min_date, max_date, freq='MS')
-                #month_options = month_range.strftime('%Y-%m').tolist()
-                month_options = ['2025-01', '2025-02', '2025-03']
+                month_options = month_range.strftime('%Y-%m').tolist()
+                #month_options = ['2025-01', '2025-02', '2025-03']
 
                 if month_options:
                     # Sidebar สำหรับเลือกช่วงเดือน
@@ -539,7 +533,6 @@ def main():
 
                         start_date1 = start_date.strftime("%Y-%m-%d %H:%M:%S.%f") #datetime object
                         end_date1 = end_date.strftime("%Y-%m-%d %H:%M:%S.%f")
-
                         
                         df_event = df_event[(df_event["Field change time"] >= start_date1) & (df_event["Field change time"] <= end_date1)]
                     else:
@@ -593,16 +586,14 @@ def main():
         #    flag = 'substation'
         #else:
         #    flag = 'frtu'
-        flag = 'substation'
+        flag = 'frtu'
         df_merged = merge_data(df_remote_sub,df_merged,flag)
-        st.info("Merge: ")
-        st.dataframe(df_merged)
         df_merged_add = add_value(df_merged)
-        df_merged_add['Availability Period'] = month_options[0]
-        df_merged_add = df_merged_add.round(2)
 
-        #st.dataframe(df_merged_add)
-        #df_ava_, peroid_name = add_peroid(df_merged_add, start_date, end_date)
+        peroid_name = st.radio("peroid_name", options=month_options)
+        df_merged_add['Availability Period'] = peroid_name
+
+        #df_ava_, peroid_name = add_peroid(df_merged_add, start_date1, end_date1)
         #st.dataframe(df_ava_)
         
         # ตั้งชื่อ CSV จากชื่อไฟล์เดิม
@@ -620,8 +611,8 @@ def main():
         excel_data = to_excel(df_merged_add)
         
         # ตั้งชื่อ xlsx,csv จากชื่อไฟล์เดิม
-        xlsx_filename = 'availability_data' + '_' + peroid_name + ".xlsx"
-        csv_filename = 'availability_data' + '_' + peroid_name + ".csv"
+        xlsx_filename = 'availability_data' + '_' + flag + '_' + peroid_name + ".xlsx"
+        csv_filename = 'availability_data' + '_' + flag + '_' + peroid_name + ".csv"
 
         st.download_button(
             label="📥 ดาวน์โหลดข้อมูลอุปกรณ์ทั้งหมด",
