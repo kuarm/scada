@@ -16,7 +16,7 @@ st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="w
 with open('./css/style.css')as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
     
-source_csv_remote = "D:/ML/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
+source_csv_remote = "D:/Develop/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
 source_excel = "./source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
@@ -96,11 +96,11 @@ def split_state(df):
 
 def sort_state_chain(df):
     """จัดเรียงแถวที่มี Field change time ซ้ำกัน โดยให้ New State ของแถวบน = Previous State ของแถวถัดไป"""
-    # จัดกลุ่มตามเวลาที่ซ้ำกัน
-    grouped = df.groupby("Field change time")
+    # ✅ กลุ่มแยกตาม Device และเวลา
+    grouped = df.groupby(["Device", "Field change time"])
     result = []
 
-    for group_time, group_df in grouped:
+    for (device_id, group_time), group_df in grouped:
         if len(group_df) == 1:
             result.append(group_df)
             continue
@@ -112,10 +112,10 @@ def sort_state_chain(df):
 
         # หา "จุดเริ่มต้น" คือ Previous State ที่ไม่ใช่ New State ของใครเลย
         start_candidates = list(prev_states - new_states)
-
         if not start_candidates:
             # ถ้าไม่มีจุดเริ่มต้นที่ชัดเจน (เช่น loop หรือ incomplete), ใช้ลำดับเดิมไปก่อน
             sorted_group = group_df
+            st.dataframe(group_df)
         else:
             current_state = start_candidates[0]
             rows = []
@@ -128,11 +128,54 @@ def sort_state_chain(df):
                 current_state = row["New State"]
 
             sorted_group = pd.DataFrame(rows)
-
+        st.dataframe(sorted_group)
         result.append(sorted_group)
 
     # รวมผลลัพธ์ที่จัดเรียงแล้ว
     return pd.concat(result).reset_index(drop=True)
+
+def sort_state_chain1(df):
+    """จัดเรียง chain ภายในแต่ละกลุ่ม Device + Field change time"""
+    df["Field change time"] = pd.to_datetime(df["Field change time"])
+
+    result = []
+    grouped = df.groupby(["Device", "Field change time"])
+
+    for (_, timestamp), group_df in grouped:
+        if len(group_df) == 1:
+            result.append(group_df)
+            continue
+
+        state_map = {row["Previous State"]: row for _, row in group_df.iterrows()}
+        new_states = set(group_df["New State"])
+        prev_states = set(group_df["Previous State"])
+
+        start_candidates = list(prev_states - new_states)
+
+        if not start_candidates:
+            # ถ้าไม่มี state เริ่มชัดเจน (วงกลมหรือซ้ำ), คืนลำดับเดิม
+            sorted_group = group_df
+        else:
+            current_state = start_candidates[0]
+            visited = set()
+            rows = []
+
+            while current_state in state_map and current_state not in visited:
+                row = state_map[current_state]
+                rows.append(row)
+                visited.add(current_state)
+                current_state = row["New State"]
+
+            sorted_group = pd.DataFrame(rows)
+
+            # เพิ่มแถวที่ไม่ถูกเชน (เช่น duplicate state)
+            if len(sorted_group) < len(group_df):
+                extras = group_df[~group_df.index.isin(sorted_group.index)]
+                sorted_group = pd.concat([sorted_group, extras])
+
+        result.append(sorted_group)
+
+    return pd.concat(result).sort_values(by=["Field change time"]).reset_index(drop=True)
 
 def adjust_stateandtime(df, startdate, enddate):
 
@@ -236,7 +279,7 @@ def calculate_state_summary(df_filtered):
     normal_duration = df_filtered[df_filtered["New State"] == normal_state]["Adjusted Duration (seconds)"].sum()
     abnormal_duration = df_filtered[df_filtered["New State"].isin(abnormal_states)]["Adjusted Duration (seconds)"].sum()
     total_duration = df_filtered["Adjusted Duration (seconds)"].sum()
-    
+
     if total_duration > 0:
         normal_percentage = (normal_duration / total_duration) * 100
         abnormal_percentage = (abnormal_duration / total_duration) * 100
@@ -260,8 +303,8 @@ def calculate_device_availability(df_filtered):
     # คำนวณเวลาที่ Device อยู่ในสถานะปกติ
     device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
-    #st.dataframe(df_filtered)
-    #st.dataframe(device_online_duration)
+    st.dataframe(df_filtered[df_filtered["Device"] == 'PBA_S'])
+    st.dataframe(device_online_duration[device_online_duration["Device"] == 'PBA_S'])
     # รวมข้อมูลทั้งสองตาราง
     device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
     # คำนวณ Availability (%)
@@ -321,6 +364,10 @@ def calculate_device_count(df_filtered,device_availability):
         "Offline Count": "จำนวนครั้ง Offline",
         "Offline Duration (seconds)": "ระยะเวลา Offline (seconds)"
     })
+    #st.info("state_count")
+    #st.dataframe(state_count)
+    #st.info("state_duration")
+    #st.dataframe(state_duration)
     return merged_df, state_count, state_duration
 
 def plot(df):
@@ -476,6 +523,17 @@ def add_peroid(df, startdate, enddate):
     df["Availability Period"] = period_label
     return df, period_label
 
+def format_selected_columns(df):
+    formatted_df = df.copy()
+    for col in formatted_df.columns:
+        if col == "Availability (%)":
+            # ปัดทศนิยม 2 ตำแหน่ง + ใส่ %
+            formatted_df[col] = formatted_df[col].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "")
+        elif pd.api.types.is_numeric_dtype(formatted_df[col]):
+            # คอลัมน์ตัวเลขอื่น ใส่ comma, ไม่ใส่ทศนิยม
+            formatted_df[col] = formatted_df[col].apply(lambda x: f"{int(x):,}" if pd.notnull(x) else "")
+    return formatted_df
+
 def main():
     #st.title("📊 สถานะอุปกรณ์บนระบบ SCADA/TDMS")
     #st.markdown("---------")
@@ -499,14 +557,17 @@ def main():
         df_event = df.copy()
         df_remote = load_data_csv(source_csv_remote)
         df_remote_sub = df_remote.copy()
+        #df_event = df_event[df_event["Device"] == '1BPC01_S']
+        
 
         if df_event is not None and not df_remote.empty:
             #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
             #sidebar เลือกเวลา
-            #df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%Y-%m-%d %I:%M:%S.%f", errors='coerce')
-            df_event["Field change time"] = pd.to_datetime(df_event["Field change time"],errors='coerce',dayfirst=True)
+            df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%Y-%m-%d %I:%M:%S.%f", errors='coerce')
+            #df_event["Field change time"] = pd.to_datetime(df_event["Field change time"],errors='coerce',dayfirst=True)
             # แสดงค่าพร้อม millisecond
-            df_event["Field change time"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+            #df_event["Field change time"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+            #st.dataframe(df_event["Field change time"].dt.strftime('%Y-%m-%d %H:%M:%S.%f').unique())
 
             with st.sidebar:
                 #start_date = st.sidebar.date_input("Start Date", datetime(2025, 1, 1))
@@ -514,12 +575,13 @@ def main():
                 # หาค่า min/max จากข้อมูลที่โหลด
                 min_date = df_event["Field change time"].min()
                 max_date = df_event["Field change time"].max()
-                st.write(max_date)
+                #st.write(max_date)
 
                 # แปลงเป็นปี-เดือน
                 month_range = pd.date_range(min_date, max_date, freq='MS')
                 month_options = month_range.strftime('%Y-%m').tolist()
                 #month_options = ['2025-01', '2025-02', '2025-03']
+                #st.write(month_options)
 
                 if month_options:
                     # Sidebar สำหรับเลือกช่วงเดือน
@@ -569,14 +631,31 @@ def main():
         
         ###-----Calc-----###
         df_split = split_state(df_event)
-        df_filtered = sort_state_chain(df_split)
-        adjusted_all = []
+        df_combined_sort = sort_state_chain1(df_split)
+        #df_combined_sort["Field change time"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
 
-        for device_id in df_filtered["Device"].unique():
-            df_device = df_filtered[df_filtered["Device"] == device_id].copy()
+
+        
+        #adjusted_all_1 = []
+        #for device_id in df_split["Device"].unique():
+        #    df_device_1 = df_split[df_split["Device"] == device_id].copy()
+        #    df_adjusted_1 = sort_state_chain(df_device_1)
+        #    adjusted_all_1.append(df_adjusted_1)
+        #df_combined_sort = pd.concat(adjusted_all_1, ignore_index=True)
+        df_combined_sort["Field change time"].dt.strftime('%Y-%m-%d %H:%M:%S.%f')
+        st.dataframe(df_combined_sort[df_combined_sort["Device"] == 'PBA_S'])
+        #st.dataframe(df_combined_sort["Field change time"].dt.strftime('%Y-%m-%d %H:%M:%S.%f').unique())
+        #st.info("หลัง เพิ่ม state")
+        #st.dataframe(df_combined_sort)
+
+        adjusted_all_2 = []
+        for device_id in df_combined_sort["Device"].unique():
+            df_device = df_combined_sort[df_combined_sort["Device"] == device_id].copy()
             df_adjusted = adjust_stateandtime(df_device, start_date1, end_date1)
-            adjusted_all.append(df_adjusted)
-        df_combined = pd.concat(adjusted_all, ignore_index=True)
+            adjusted_all_2.append(df_adjusted)
+        df_combined = pd.concat(adjusted_all_2, ignore_index=True)
+        #st.info("df_combine")
+        #st.dataframe(df_combined)
 
         state_summary = calculate_state_summary(df_combined) #Avail แต่ละ state
         device_availability = calculate_device_availability(df_combined)
@@ -585,13 +664,15 @@ def main():
         #if mode_select == 'substation':
         #    flag = 'substation'
         #else:
-        #    flag = 'frtu'
-        flag = 'frtu'
+        #flag = 'frtu'
+        flag = 'substation'
         df_merged = merge_data(df_remote_sub,df_merged,flag)
         df_merged_add = add_value(df_merged)
 
         peroid_name = st.radio("peroid_name", options=month_options)
         df_merged_add['Availability Period'] = peroid_name
+        df_final = format_selected_columns(df_merged_add)
+        #st.dataframe(df_final)
 
         #df_ava_, peroid_name = add_peroid(df_merged_add, start_date1, end_date1)
         #st.dataframe(df_ava_)
