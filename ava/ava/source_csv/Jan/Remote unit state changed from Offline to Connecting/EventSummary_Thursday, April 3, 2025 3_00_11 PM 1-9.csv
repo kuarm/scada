@@ -1,0 +1,16 @@
+﻿Event Summary - Thursday, April 3, 2025 3:00:11 PM
+ Start Date: 01/01/2025 12:00:00 AM End Date: 10/01/2025 12:00:00 AM
+Region contains S1
+AND Substation contains S1 FRTU
+AND Message contains Remote unit state changed from Offline to Connecting.
+AND Device contains S1-RCS
+
+"#","Process time","Field change time","Message","Note","Type","Region","Subregion","Substation","Feeder","Location","Device","Device type","AOR","Element","RTU","Alias","Severity","Voltage level [kV]","Category","Class","Activity","Inhibit","Source","User name","Console name","Reason source","Reason ID"
+"1","07/01/2025 3:13:24.810 PM","07/01/2025 3:13:24.809 PM","Remote unit state changed from Offline to Connecting.","","Event","S1 MV","","S1 FRTU","","S1 FRTU","S1-RCS-0983","Remote unit","S1-HV,S1-MV,S1-Viewer","S1-RCS-0983","S1-RCS-0983","DNA08S-09 : Master DNA (Damnoen Saduak Substation)","Trivial","NaN","Unknown","IT","Telemetry Alarm","None","SCADA","core\dnaApp_pcore","DC1-COR-DRT2","",""
+"2","07/01/2025 3:13:03.343 PM","07/01/2025 3:13:03.341 PM","Remote unit state changed from Offline to Connecting.","","Event","S1 MV","","S1 FRTU","","S1 FRTU","S1-RCS-0982","Remote unit","S1-HV,S1-MV,S1-Viewer","S1-RCS-0982","S1-RCS-0982","DNA05S-25 : Master DOP (Don Phai Office)","Trivial","NaN","Unknown","IT","Telemetry Alarm","None","SCADA","core\dnaApp_pcore","DC1-COR-DRT2","",""
+"3","02/01/2025 1:31:47.330 PM","02/01/2025 1:31:47.328 PM","Remote unit state changed from Offline to Connecting.","","Event","S1 MV","","S1 FRTU","","S1 FRTU","S1-RCS-1108","Remote unit","S1-HV,S1-MV,S1-Viewer","S1-RCS-1108","S1-RCS-1108","TSE01S-10 : Master PTW (Pathio Office)","Trivial","NaN","Unknown","IT","Telemetry Alarm","None","SCADA","core\dnaApp_pcore","DC1-COR-DRT2","",""
+"4","02/01/2025 10:36:55.991 AM","02/01/2025 10:36:55.990 AM","Remote unit state changed from Offline to Connecting.","","Event","S1 MV","","S1 FRTU","","S1 FRTU","S1-RCS-0270","Remote unit","S1-HV,S1-MV,S1-Viewer","S1-RCS-0270","S1-RCS-0270","HUB05S-05 : Master HUH (Hua Hin Office)","Trivial","NaN","Unknown","IT","Telemetry Alarm","None","SCADA","core\dnaApp_pcore","DC1-COR-DRT2","",""
+"5","02/01/2025 9:30:01.126 AM","02/01/2025 9:30:01.125 AM","Remote unit state changed from Offline to Connecting.","","Event","S1 MV","","S1 FRTU","","S1 FRTU","S1-RCS-0279","Remote unit","S1-HV,S1-MV,S1-Viewer","S1-RCS-0279","S1-RCS-0279","HUB08S-17 : Master HUH (Hua Hin Office)","Trivial","NaN","Unknown","IT","Telemetry Alarm","None","SCADA","core\dnaApp_pcore","DC1-COR-DRT2","",""
+
+
+
