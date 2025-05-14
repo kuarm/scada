@@ -16,7 +16,7 @@ st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="w
 with open('./css/style.css')as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
     
-source_csv_remote = "D:/Develop/scada/ava/source_excel/DataforCalc_CSV/RemoteUnit_01052025_filtered.csv"
+source_csv_remote = "D:/Develop/scada/ava/source_excel/DataforCalc_CSV/excel/RemoteUnit_01052025_filtered.xlsx"
 source_excel = "./source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
@@ -32,7 +32,7 @@ labels_eva = ["0 <= Availability (%) <= 80", "80 < Availability (%) <= 90", "90 
 def load_data_xls(uploaded_file):
     usecols1 = ["Name", "State", "Description", "Substation"]
     usecols2=["Field change time", "Message", "Device"]
-    df = pd.read_excel(uploaded_file, usecols=usecols2)
+    df = pd.read_excel(uploaded_file)
     #df = df[df["Substation"] == "S1 FRTU"]
     #df.rename(columns={"Name": "Device"}, inplace=True)
     return df
@@ -303,8 +303,8 @@ def calculate_device_availability(df_filtered):
     # คำนวณเวลาที่ Device อยู่ในสถานะปกติ
     device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
-    st.dataframe(df_filtered[df_filtered["Device"] == 'PBA_S'])
-    st.dataframe(device_online_duration[device_online_duration["Device"] == 'PBA_S'])
+    #st.dataframe(df_filtered[df_filtered["Device"] == 'PBA_S'])
+    #st.dataframe(device_online_duration[device_online_duration["Device"] == 'PBA_S'])
     # รวมข้อมูลทั้งสองตาราง
     device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
     # คำนวณ Availability (%)
@@ -526,12 +526,15 @@ def add_peroid(df, startdate, enddate):
 def format_selected_columns(df):
     formatted_df = df.copy()
     for col in formatted_df.columns:
-        if col == "Availability (%)":
-            # ปัดทศนิยม 2 ตำแหน่ง + ใส่ %
+        if col in ["จำนวนครั้ง Online", "จำนวนครั้ง Connecting", "จำนวนครั้ง Initializing", "จำนวนครั้ง Telemetry Failure", "จำนวนครั้ง Offline"]:
+            # คอลัมน์ใส่ comma, ไม่ใส่ทศนิยม
+            formatted_df[col] = formatted_df[col].apply(lambda x: f"{int(x):,}" if pd.notnull(x) else "")
+            # คอลัมน์ใส่ทศนิยม
+        elif col == "Availability (%)":
             formatted_df[col] = formatted_df[col].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "")
         elif pd.api.types.is_numeric_dtype(formatted_df[col]):
-            # คอลัมน์ตัวเลขอื่น ใส่ comma, ไม่ใส่ทศนิยม
-            formatted_df[col] = formatted_df[col].apply(lambda x: f"{int(x):,}" if pd.notnull(x) else "")
+            # ปัดทศนิยม 2 ตำแหน่ง + ใส่ ,
+            formatted_df[col] = formatted_df[col].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
     return formatted_df
 
 def main():
@@ -555,7 +558,7 @@ def main():
             st.success(f"✅ โหลดไฟล์ {uploaded_file.name} ไม่เรียบร้อย")
     
         df_event = df.copy()
-        df_remote = load_data_csv(source_csv_remote)
+        df_remote = load_data_xls(source_csv_remote)
         df_remote_sub = df_remote.copy()
         #df_event = df_event[df_event["Device"] == '1BPC01_S']
         
@@ -642,8 +645,8 @@ def main():
         #    df_adjusted_1 = sort_state_chain(df_device_1)
         #    adjusted_all_1.append(df_adjusted_1)
         #df_combined_sort = pd.concat(adjusted_all_1, ignore_index=True)
-        df_combined_sort["Field change time"].dt.strftime('%Y-%m-%d %H:%M:%S.%f')
-        st.dataframe(df_combined_sort[df_combined_sort["Device"] == 'PBA_S'])
+        #df_combined_sort["Field change time"].dt.strftime('%Y-%m-%d %H:%M:%S.%f')
+        #st.dataframe(df_combined_sort[df_combined_sort["Device"] == 'PBA_S'])
         #st.dataframe(df_combined_sort["Field change time"].dt.strftime('%Y-%m-%d %H:%M:%S.%f').unique())
         #st.info("หลัง เพิ่ม state")
         #st.dataframe(df_combined_sort)
@@ -664,8 +667,8 @@ def main():
         #if mode_select == 'substation':
         #    flag = 'substation'
         #else:
-        #flag = 'frtu'
-        flag = 'substation'
+        flag = 'frtu'
+        #flag = 'substation'
         df_merged = merge_data(df_remote_sub,df_merged,flag)
         df_merged_add = add_value(df_merged)
 
@@ -689,7 +692,7 @@ def main():
             processed_data = output.getvalue()
             return processed_data
         
-        excel_data = to_excel(df_merged_add)
+        excel_data = to_excel(df_final)
         
         # ตั้งชื่อ xlsx,csv จากชื่อไฟล์เดิม
         xlsx_filename = 'availability_data' + '_' + flag + '_' + peroid_name + ".xlsx"
@@ -715,7 +718,7 @@ def main():
             return output.getvalue()
         
         # แปลง DataFrame เป็น CSV text
-        csv_data = to_csv(df_merged_add)
+        csv_data = to_csv(df_final)
         # ปุ่มดาวน์โหลด CSV
         st.download_button(
             label="📥 ดาวน์โหลดข้อมูลอุปกรณ์ทั้งหมด (CSV)",
