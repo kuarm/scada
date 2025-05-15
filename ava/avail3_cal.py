@@ -16,7 +16,7 @@ st.set_page_config(page_title='Dashboard‍', page_icon=':bar_chart:', layout="w
 with open('./css/style.css')as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html = True)
     
-source_csv_remote = "D:/Develop/scada/ava/source_excel/DataforCalc_CSV/excel/RemoteUnit_01052025_filtered.xlsx"
+source_csv_remote = "D:/ML/scada/ava/source_excel/DataforCalc_CSV/excel/RemoteUnit_01052025_filtered.xlsx"
 source_excel = "./source_excel/S1-REC_JAN-MAR2025.xlsx"
 event_path_parquet = "./Output_file/S1-REC-020X-021X-0220.parquet"
 remote_path_parquet = "./Output_file/combined_output_rtu.parquet"
