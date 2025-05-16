@@ -6,6 +6,10 @@ import plotly.graph_objects as go
 
 
 def evaluate(df,bins,labels):
+    # ลบ % และ comma ออกก่อน แล้วแปลงเป็น float
+    df["Availability (%)"] = df["Availability (%)"].replace({",": "", "%": ""}, regex=True)
+    df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
+
     # เพิ่มคอลัมน์ "เกณฑ์การประเมิน"
     df["เกณฑ์การประเมิน"] = pd.cut(df["Availability (%)"], bins=bins, labels=labels, right=True)
     # กำหนดเงื่อนไขสำหรับผลการประเมิน
@@ -74,6 +78,7 @@ def evaluate(df,bins,labels):
                             "เปอร์เซ็นต์ (%)",
                             "Device+Percent"]]
     show_df = summary_df.copy()[cols_show]
+
     fig1 = px.bar(
         #summary_df[summary_df["เกณฑ์การประเมิน"] != "รวมทั้งหมด"],  # ไม่เอาแถวรวมทั้งหมดไป plot,
         summary_df,
@@ -144,7 +149,6 @@ if uploaded_file:
         st.success(f"✅ โหลดไฟล์ {uploaded_file.name} ไม่เรียบร้อย")
         
     df_filtered, months = convert_date(df)
-    
     option_func = ['สถานะ', 'ประเมินผล', 'Histogram', 'เปรียบเทียบทุกเดือน']
     option_submenu = ['ระบบจำหน่ายสายส่ง','สถานีไฟฟ้า']
     
@@ -161,42 +165,54 @@ if uploaded_file:
         cols = "จำนวน " + title
         df_evaluate = df_filtered.copy()
         df_eva, summary_df, fig1, fig2, show_df = evaluate(df_evaluate,bins_eva,labels_eva)
+        st.write(fig2)
         show_df.rename(columns={"Device+Percent": cols}, inplace=True)
-        st.markdown("### 🔹 ผลการประเมิน Availability (%) ของอุปกรณ์ในสถานีไฟฟ้า")
-        st.dataframe(show_df)
+        #st.markdown("### 🔹 ผลการประเมิน Availability (%) ของอุปกรณ์ในสถานีไฟฟ้า")
+        #st.dataframe(show_df)
         header_colors = ['#003366', '#006699', '#0099CC']   # สีหัวตาราง
         cell_colors = ['#E6F2FF', '#D9F2D9', '#FFF2CC']     # สีพื้นหลังเซลล์แต่ละคอลัมน์
-        fig = go.Figure(data=[go.Table(
-            header=dict(
-                values=["<b>ผลการประเมิน</b>", "<b>เกณฑ์การประเมิน</b>", f"<b>{cols}</b>"],
-                fill_color=header_colors,
-                align='center',
-                font=dict(color='white', size=14)
-                ),
-                cells=dict(
-                    values=[
-                        summary_df["ผลการประเมิน"],
-                        summary_df["เกณฑ์การประเมิน"],
-                        summary_df["Device+Percent"]
-                        ],
-                        fill_color=[cell_colors[0]] * len(summary_df.columns),
-                        align='center',
-                        font=dict(color='black', size=13)
-                        )
-                        )])
 
-        fig.update_layout(
-            title_text=f"🔹 ผลการประเมิน Availability (%) ของ {cols}",
-            title_x=0.5,
-            title_font_size=20,
-            margin=dict(t=60, b=20)
+        fig2 = go.Figure(data=[go.Table(
+            header=dict(
+                values=[
+                    "<b>ผลการประเมิน</b>",
+                    "<b>เกณฑ์การ<br>ประเมิน</b>",
+                    f"<b>{cols}</b>"
+                ],
+                fill_color=header_colors,
+                align=["center", "center", "center"],
+                font=dict(color='white', size=14)
+            ),
+            cells=dict(
+                values=[
+                    summary_df["ผลการประเมิน"],
+                    summary_df["เกณฑ์การประเมิน"],
+                    summary_df["Device+Percent"]
+                ],
+                fill_color=[cell_colors[0]] * len(summary_df.columns),
+                align='center',
+                font=dict(color='black', size=13)
             )
-        st.plotly_chart(fig, use_container_width=True)
+        )])
+
+        fig2.update_layout(
+            title=dict(
+                text=f"🔹 ผลการประเมิน Availability (%) ของ {cols.replace('<br>', ' ')}",
+                x=0.5,  # ตรงกลาง
+                xanchor='center',
+                font=dict(size=20)
+                ),
+                margin=dict(t=60, b=20)
+        )
+        #st.plotly_chart(fig2, use_container_width=True)
 
     elif func_select == 'Histogram':
         bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         labels = [f"{bins[i]}-{bins[i+1]} %" for i in range(len(bins)-1)]  # ["0-10", "10-20", ..., "90-100"]
         df_histogram = df_filtered.copy()  # ป้องกัน SettingWithCopyWarning
+        # ลบ % และ comma ออกก่อน แล้วแปลงเป็น float
+        df["Availability (%)"] = df["Availability (%)"].replace({",": "", "%": ""}, regex=True)
+        df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
         df_histogram["Availability Group"] = pd.cut(df_histogram["Availability (%)"], bins=bins, labels=labels, right=True)
         grouped_counts = df_histogram["Availability Group"].value_counts().sort_index().reset_index()
         cols = "จำนวน " + title
