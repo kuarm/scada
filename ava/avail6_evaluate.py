@@ -165,14 +165,13 @@ if uploaded_file:
         cols = "จำนวน " + title
         df_evaluate = df_filtered.copy()
         df_eva, summary_df, fig1, fig2, show_df = evaluate(df_evaluate,bins_eva,labels_eva)
-        st.write(fig2)
         show_df.rename(columns={"Device+Percent": cols}, inplace=True)
         #st.markdown("### 🔹 ผลการประเมิน Availability (%) ของอุปกรณ์ในสถานีไฟฟ้า")
         #st.dataframe(show_df)
         header_colors = ['#003366', '#006699', '#0099CC']   # สีหัวตาราง
         cell_colors = ['#E6F2FF', '#D9F2D9', '#FFF2CC']     # สีพื้นหลังเซลล์แต่ละคอลัมน์
 
-        fig2 = go.Figure(data=[go.Table(
+        fig3 = go.Figure(data=[go.Table(
             header=dict(
                 values=[
                     "<b>ผลการประเมิน</b>",
@@ -195,7 +194,7 @@ if uploaded_file:
             )
         )])
 
-        fig2.update_layout(
+        fig3.update_layout(
             title=dict(
                 text=f"🔹 ผลการประเมิน Availability (%) ของ {cols.replace('<br>', ' ')}",
                 x=0.5,  # ตรงกลาง
@@ -204,7 +203,7 @@ if uploaded_file:
                 ),
                 margin=dict(t=60, b=20)
         )
-        #st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, use_container_width=True)
 
     elif func_select == 'Histogram':
         bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
