@@ -138,6 +138,20 @@ def convert_date(df):
     months = sorted(df['Month'].dropna().unique().astype(str))
     return df, months
 
+# ฟังก์ชันเลือกสีตามเงื่อนไขของ label
+def get_color(label):
+    try:
+        # ดึงค่าตัวเลขจากช่วง เช่น "0-10 %" → 10
+        upper = int(label.split("-")[1].strip().replace("%", ""))
+        if upper <= 80:
+            return "red"
+        elif upper <= 90:
+            return "yellow"
+        else:
+            return "green"
+    except:
+        return "gray"
+
 uploaded_file = st.file_uploader("📥 อัปโหลดไฟล์ Excel หรือ CSV", type=["xlsx", "csv"])
 
 if uploaded_file:
@@ -203,15 +217,15 @@ if uploaded_file:
                 ),
                 margin=dict(t=60, b=20)
         )
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig3, use_container_width=True)
 
     elif func_select == 'Histogram':
         bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         labels = [f"{bins[i]}-{bins[i+1]} %" for i in range(len(bins)-1)]  # ["0-10", "10-20", ..., "90-100"]
         df_histogram = df_filtered.copy()  # ป้องกัน SettingWithCopyWarning
         # ลบ % และ comma ออกก่อน แล้วแปลงเป็น float
-        df["Availability (%)"] = df["Availability (%)"].replace({",": "", "%": ""}, regex=True)
-        df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
+        df_histogram["Availability (%)"] = df_histogram["Availability (%)"].replace({",": "", "%": ""}, regex=True)
+        df_histogram["Availability (%)"] = pd.to_numeric(df_histogram["Availability (%)"], errors="coerce")
         df_histogram["Availability Group"] = pd.cut(df_histogram["Availability (%)"], bins=bins, labels=labels, right=True)
         grouped_counts = df_histogram["Availability Group"].value_counts().sort_index().reset_index()
         cols = "จำนวน " + title
@@ -223,19 +237,54 @@ if uploaded_file:
                     color="ช่วง % Availability",
                     text=cols,
                     title=f"📊 {cols}ในแต่ละช่วง % Availability",
-                )
+                    color_discrete_sequence=[
+                        "#FF0000", "#FF4000", "#FF8000", "#FFBF00", "#FFFF00",
+                        "#BFFF00", "#80FF00", "#40FF00", "#00FF00", "#00CC00"
+                        ]  # ตัวอย่างสีไล่จากแดงไปเขียว
+                        )
         fig.update_layout(
                 xaxis_title="ช่วง % Availability",
                 yaxis_title=cols,
                 showlegend=False,
                 )
+        fig.update_traces(
+                texttemplate="%{text:,}",  # ใส่ comma
+                textposition="outside"
+                )
         st.plotly_chart(fig, use_container_width=True)
+
+        # เตรียมข้อมูล
+        x_vals = grouped_counts["ช่วง % Availability"]
+        y_vals = grouped_counts[cols]
+        colors = [get_color(x) for x in x_vals]
+
+        # สร้างกราฟ
+        fig11 = go.Figure(data=[go.Bar(
+            x=x_vals,
+            y=y_vals,
+            text=[f"{int(v):,}" for v in y_vals],  # ใส่ comma
+            textposition="outside",
+            marker_color=colors
+        )])
+        # ปรับ layout
+        fig11.update_layout(
+            title=f"📊 {cols}ในแต่ละช่วง % Availability (log scale)",
+            xaxis_title="ช่วง % Availability",
+            yaxis_type="log",  # ใช้ log scale
+            yaxis_title=cols,
+            showlegend=False,
+            margin=dict(t=60, b=40)
+        )
+
+        st.plotly_chart(fig11, use_container_width=True)
     elif func_select == 'สถานะ':
         st.write("n/a")
     elif func_select == 'เปรียบเทียบทุกเดือน':
         df_compare = df_filtered.copy()
         #st.write(df_compare.columns.to_list())
-
+        df_compare["Availability (%)"] = df_compare["Availability (%)"].replace({",": "", "%": ""}, regex=True)
+        df_compare["Availability (%)"] = pd.to_numeric(df_compare["Availability (%)"], errors="coerce")
+        
         # ล้างช่องว่าง + ลบ NaN
         df_compare = df_compare[df_compare['Month'].notna()]
         df_compare['Month'] = df_compare['Month'].astype(str).str.strip()
