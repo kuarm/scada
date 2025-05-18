@@ -3,7 +3,38 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 
+def df_addColMonth(df):
+    # แปลงคอลัมน์เดือน
+    df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
+    df["Month_num"] = df["Month"].dt.month
+    month_names = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+    df["Month_name"] = df["Month_num"].apply(lambda x: month_names[x - 1] if pd.notnull(x) else "")
 
+    # Pivot table: row = Device, column = Month_name, values = Availability (%)
+    pivot_df = df.pivot_table(
+        index="Device",
+        columns="Month_name",
+        values="Availability (%)",
+        aggfunc="mean"
+    )
+
+    # เรียงลำดับคอลัมน์ตามเดือน
+    pivot_df = pivot_df.reindex(columns=month_names)
+
+    # เพิ่มคอลัมน์ค่าเฉลี่ยของแต่ละ Device
+    pivot_df["Avg Availability (%)"] = pivot_df.mean(axis=1)
+
+    # Reset index เพื่อให้ Device เป็นคอลัมน์
+    pivot_df = pivot_df.reset_index()
+
+    # จัดรูปแบบตัวเลขให้สวยงาม
+    pivot_df = pivot_df.round(2)
+    
+    # แสดงผล
+    st.dataframe(pivot_df)
+    
+    return pivot_df
 
 def evaluate(df,bins,labels):
     #เพิ่ม Month
@@ -22,17 +53,41 @@ def evaluate(df,bins,labels):
     # เพิ่มคอลัมน์ "ผลการประเมิน"
     df["ผลการประเมิน"] = df.apply(evaluate_result, axis=1)
 
-    st.write(df)
     # สรุปเฉลี่ยรายเดือน
     month_summary = df.groupby("Month_str")["Availability (%)"].mean().reset_index()
-    st.write(month_summary)
     month_summary["เกณฑ์การประเมิน"] = pd.cut(month_summary["Availability (%)"], bins=bins, labels=labels)
     month_summary["ผลการประเมิน"] = month_summary["เกณฑ์การประเมิน"].apply(
         lambda x: "✅" if x == "90 < Availability (%) <= 100" else ("⚠️" if x == "80 < Availability (%) <= 90" else "❌")
     )
     month_summary["จำนวน Device"] = df.groupby("Month_str")["Device"].nunique().values
     month_summary["เปอร์เซ็นต์ (%)"] = 100.0
-    
+    st.write(month_summary)
+    #month_summary_ = month_summary.copy()
+    #month_summary_1 = month_summary_["Availability (%)"].mean()
+    #st.write(month_summary_1)
+
+    # คำนวณค่าเฉลี่ยของ Availability (%) แยกตาม Device โดยเฉลี่ยจากหลายเดือน
+    device_avg = df.groupby("Device")["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "Avg Availability (%)"]
+        # เพิ่มการประเมินผลแบบสัญลักษณ์
+    def evaluate_status(avg):
+        if avg > 90:
+            return "✅"
+        elif avg > 80:
+            return "⚠️"
+        else:
+            return "❌"
+
+    device_avg["Evaluation"] = device_avg["Avg Availability (%)"].apply(evaluate_status)
+
+    device_months = df.groupby("Device")["Month"].nunique().reset_index()
+    device_months.columns = ["Device", "Active Months"]
+
+    # รวมเข้ากับตาราง avg
+    device_avg = device_avg.merge(device_months, on="Device")
+    # แสดงผล
+    st.dataframe(device_avg)
+
     # สรุปรวมทั้งหมด
     overall_avg = df["Availability (%)"].mean()
     total_row = pd.DataFrame({
@@ -43,89 +98,92 @@ def evaluate(df,bins,labels):
         "จำนวน Device": [df["Device"].nunique()],
         "เปอร์เซ็นต์ (%)": [100.0]
     })
-
     summary_df = pd.concat([month_summary, total_row], ignore_index=True)
-
+    
     summary_df["Device+Percent"] = summary_df.apply(
         lambda row: f"{int(row['จำนวน Device']):,} ({row['เปอร์เซ็นต์ (%)']:.2f}%)", axis=1
     )
-    """
-    # สรุปจำนวน Device ในแต่ละเกณฑ์
-    summary_df = df["ผลการประเมิน"].value_counts().reset_index()
-    summary_df.columns = ["ผลการประเมิน", "จำนวน Device"]
-    # สรุปจำนวน Device ในแต่ละ "เกณฑ์การประเมิน" และ "ผลการประเมิน"
-    summary_df = df.groupby(["เกณฑ์การประเมิน", "ผลการประเมิน"]).size().reset_index(name="จำนวน Device")
-    # ลบแถวที่ "จำนวน Device" เป็น 0 ออก
-    summary_df = summary_df[summary_df["จำนวน Device"] > 0]
-    # ลบ index ออกจาก summary_df
-    summary_df = summary_df.reset_index(drop=True)
-    # จัดกลุ่มข้อมูล Availability (%) ตามช่วงที่กำหนด
-    df["Availability Range"] = pd.cut(
-        df["Availability (%)"], bins=bins, labels=labels, right=True
-    )
-    # คำนวณจำนวนทั้งหมดของ Device
-    total_devices = summary_df["จำนวน Device"].sum()
-    # คำนวณ % ของแต่ละช่วง
-    summary_df["เปอร์เซ็นต์ (%)"] = (summary_df["จำนวน Device"] / total_devices) * 100
-    # จัดรูปแบบค่าเปอร์เซ็นต์ให้เป็นทศนิยม 2 ตำแหน่ง
-    #summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].map("{:.2f}%".format)
-    summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].round(2)
-
-    cols = ['เกณฑ์การประเมิน','ผลการประเมิน'] + [col for col in df.columns if col != 'เกณฑ์การประเมิน' and 
-                                                 col != 'ผลการประเมิน']
-    cols_show = ["ผลการประเมิน", "เกณฑ์การประเมิน", "Device+Percent"]
-    #df = df[[
-    #    "เกณฑ์การประเมิน", "Device", "description", "Availability (%)",
-    #    "Initializing Count", "Initializing Duration (seconds)",
-    #    "Telemetry Failure Count", "Telemetry Failure Duration (seconds)",
-    #    "Connecting Count", "Connecting Duration (seconds)", "Month", "ผลการประเมิน", "Availability Range"
-    #]]
-    # ✨ เพิ่มแถวผลรวมของจำนวน Device
-    total_row = pd.DataFrame({
-        "ผลการประเมิน": ["รวมทั้งหมด"],
-        "เกณฑ์การประเมิน": [""],
-        "จำนวน Device": [summary_df["จำนวน Device"].sum()],
-        "เปอร์เซ็นต์ (%)": [100.0]  # เพราะรวมคือ 100%
-    })
-
-    # ✨ เอามาต่อกับ summary_df
-    summary_df = pd.concat([summary_df, total_row], ignore_index=True)
-    summary_df = summary_df[["ผลการประเมิน", 
-                             "เกณฑ์การประเมิน",
-                             "จำนวน Device",
-                             "เปอร์เซ็นต์ (%)"]]
-    # ✅ Format ตัวเลขสวยๆ
-    summary_df["จำนวน Device"] = summary_df["จำนวน Device"].apply(lambda x: f"{x:,}")
-    summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].apply(lambda x: f"{x:.2f}%")
-    summary_df["Device+Percent"] = summary_df.apply(
-        lambda row: f"{row['จำนวน Device']} ({row['เปอร์เซ็นต์ (%)']})", axis=1
+    pivot_df = df_addColMonth(df)
+    st.write(df)
+    def test():
+        """
+        # สรุปจำนวน Device ในแต่ละเกณฑ์
+        summary_df = df["ผลการประเมิน"].value_counts().reset_index()
+        summary_df.columns = ["ผลการประเมิน", "จำนวน Device"]
+        # สรุปจำนวน Device ในแต่ละ "เกณฑ์การประเมิน" และ "ผลการประเมิน"
+        summary_df = df.groupby(["เกณฑ์การประเมิน", "ผลการประเมิน"]).size().reset_index(name="จำนวน Device")
+        # ลบแถวที่ "จำนวน Device" เป็น 0 ออก
+        summary_df = summary_df[summary_df["จำนวน Device"] > 0]
+        # ลบ index ออกจาก summary_df
+        summary_df = summary_df.reset_index(drop=True)
+        # จัดกลุ่มข้อมูล Availability (%) ตามช่วงที่กำหนด
+        df["Availability Range"] = pd.cut(
+            df["Availability (%)"], bins=bins, labels=labels, right=True
         )
-    summary_df = summary_df[["ผลการประเมิน", 
-                            "เกณฑ์การประเมิน",
-                            "จำนวน Device",
-                            "เปอร์เซ็นต์ (%)",
-                            "Device+Percent"]]
-    show_df = summary_df.copy()[cols_show]
-    fig1 = px.bar(
-        #summary_df[summary_df["เกณฑ์การประเมิน"] != "รวมทั้งหมด"],  # ไม่เอาแถวรวมทั้งหมดไป plot,
-        summary_df,
-        x="เกณฑ์การประเมิน",
-        y="จำนวน Device",
-        color="ผลการประเมิน",
-        text="จำนวน Device",
-        barmode="group",
-        title="จำนวน Device ตามเกณฑ์การประเมิน",
-    )
-    # ✅ Pie Chart สัดส่วนผลการประเมิน
-    fig2 = px.pie(
-        summary_df[summary_df["เกณฑ์การประเมิน"] != "รวมทั้งหมด"],
-        names="ผลการประเมิน",
-        values="จำนวน Device",
-        title="ประเมิน",
-        hole=0.4
-    )
-    fig2.update_traces(textinfo='percent+label')
-    """
+        # คำนวณจำนวนทั้งหมดของ Device
+        total_devices = summary_df["จำนวน Device"].sum()
+        # คำนวณ % ของแต่ละช่วง
+        summary_df["เปอร์เซ็นต์ (%)"] = (summary_df["จำนวน Device"] / total_devices) * 100
+        # จัดรูปแบบค่าเปอร์เซ็นต์ให้เป็นทศนิยม 2 ตำแหน่ง
+        #summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].map("{:.2f}%".format)
+        summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].round(2)
+
+        cols = ['เกณฑ์การประเมิน','ผลการประเมิน'] + [col for col in df.columns if col != 'เกณฑ์การประเมิน' and 
+                                                    col != 'ผลการประเมิน']
+        cols_show = ["ผลการประเมิน", "เกณฑ์การประเมิน", "Device+Percent"]
+        #df = df[[
+        #    "เกณฑ์การประเมิน", "Device", "description", "Availability (%)",
+        #    "Initializing Count", "Initializing Duration (seconds)",
+        #    "Telemetry Failure Count", "Telemetry Failure Duration (seconds)",
+        #    "Connecting Count", "Connecting Duration (seconds)", "Month", "ผลการประเมิน", "Availability Range"
+        #]]
+        # ✨ เพิ่มแถวผลรวมของจำนวน Device
+        total_row = pd.DataFrame({
+            "ผลการประเมิน": ["รวมทั้งหมด"],
+            "เกณฑ์การประเมิน": [""],
+            "จำนวน Device": [summary_df["จำนวน Device"].sum()],
+            "เปอร์เซ็นต์ (%)": [100.0]  # เพราะรวมคือ 100%
+        })
+
+        # ✨ เอามาต่อกับ summary_df
+        summary_df = pd.concat([summary_df, total_row], ignore_index=True)
+        summary_df = summary_df[["ผลการประเมิน", 
+                                "เกณฑ์การประเมิน",
+                                "จำนวน Device",
+                                "เปอร์เซ็นต์ (%)"]]
+        # ✅ Format ตัวเลขสวยๆ
+        summary_df["จำนวน Device"] = summary_df["จำนวน Device"].apply(lambda x: f"{x:,}")
+        summary_df["เปอร์เซ็นต์ (%)"] = summary_df["เปอร์เซ็นต์ (%)"].apply(lambda x: f"{x:.2f}%")
+        summary_df["Device+Percent"] = summary_df.apply(
+            lambda row: f"{row['จำนวน Device']} ({row['เปอร์เซ็นต์ (%)']})", axis=1
+            )
+        summary_df = summary_df[["ผลการประเมิน", 
+                                "เกณฑ์การประเมิน",
+                                "จำนวน Device",
+                                "เปอร์เซ็นต์ (%)",
+                                "Device+Percent"]]
+        show_df = summary_df.copy()[cols_show]
+        fig1 = px.bar(
+            #summary_df[summary_df["เกณฑ์การประเมิน"] != "รวมทั้งหมด"],  # ไม่เอาแถวรวมทั้งหมดไป plot,
+            summary_df,
+            x="เกณฑ์การประเมิน",
+            y="จำนวน Device",
+            color="ผลการประเมิน",
+            text="จำนวน Device",
+            barmode="group",
+            title="จำนวน Device ตามเกณฑ์การประเมิน",
+        )
+        # ✅ Pie Chart สัดส่วนผลการประเมิน
+        fig2 = px.pie(
+            summary_df[summary_df["เกณฑ์การประเมิน"] != "รวมทั้งหมด"],
+            names="ผลการประเมิน",
+            values="จำนวน Device",
+            title="ประเมิน",
+            hole=0.4
+        )
+        fig2.update_traces(textinfo='percent+label')
+        """
+    
     # Bar Chart
     fig1 = px.bar(
         summary_df[summary_df["Month_str"] != "รวมทั้งหมด"],
@@ -147,7 +205,7 @@ def evaluate(df,bins,labels):
     )
     fig2.update_traces(textinfo="percent+label")
 
-    show_df = summary_df[["Month_str", "ผลการประเมิน", "Device+Percent"]]
+    show_df = summary_df[["Month_str", "Availability (%)", "เกณฑ์การประเมิน", "ผลการประเมิน", "Device+Percent"]]
     return df, summary_df, fig1, fig2, show_df
 
 def range_ava(df,bins,labels):
@@ -238,8 +296,8 @@ if uploaded_files:
         df_evaluate = df_combined.copy()
 
         df_eva, summary_df, fig1, fig2, show_df = evaluate(df_evaluate,bins_eva,labels_eva)
-        st.plotly_chart(fig1)
-        st.plotly_chart(fig2)
+        #st.plotly_chart(fig1)
+        #st.plotly_chart(fig2)
         st.dataframe(show_df)
         show_df.rename(columns={"Device+Percent": cols}, inplace=True)
         #st.markdown("### 🔹 ผลการประเมิน Availability (%) ของอุปกรณ์ในสถานีไฟฟ้า")
