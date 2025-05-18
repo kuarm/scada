@@ -6,10 +6,9 @@ import plotly.graph_objects as go
 
 
 def evaluate(df,bins,labels):
-    # ลบ % และ comma ออกก่อน แล้วแปลงเป็น float
-    df["Availability (%)"] = df["Availability (%)"].replace({",": "", "%": ""}, regex=True)
-    df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
-
+    #เพิ่ม Month
+    df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
+    df["Month_str"] = df["Month"].dt.strftime("%Y-%m")
     # เพิ่มคอลัมน์ "เกณฑ์การประเมิน"
     df["เกณฑ์การประเมิน"] = pd.cut(df["Availability (%)"], bins=bins, labels=labels, right=True)
     # กำหนดเงื่อนไขสำหรับผลการประเมิน
@@ -22,6 +21,35 @@ def evaluate(df,bins,labels):
             return "❌"
     # เพิ่มคอลัมน์ "ผลการประเมิน"
     df["ผลการประเมิน"] = df.apply(evaluate_result, axis=1)
+
+    st.write(df)
+    # สรุปเฉลี่ยรายเดือน
+    month_summary = df.groupby("Month_str")["Availability (%)"].mean().reset_index()
+    st.write(month_summary)
+    month_summary["เกณฑ์การประเมิน"] = pd.cut(month_summary["Availability (%)"], bins=bins, labels=labels)
+    month_summary["ผลการประเมิน"] = month_summary["เกณฑ์การประเมิน"].apply(
+        lambda x: "✅" if x == "90 < Availability (%) <= 100" else ("⚠️" if x == "80 < Availability (%) <= 90" else "❌")
+    )
+    month_summary["จำนวน Device"] = df.groupby("Month_str")["Device"].nunique().values
+    month_summary["เปอร์เซ็นต์ (%)"] = 100.0
+    
+    # สรุปรวมทั้งหมด
+    overall_avg = df["Availability (%)"].mean()
+    total_row = pd.DataFrame({
+        "Month_str": ["รวมทั้งหมด"],
+        "Availability (%)": [overall_avg],
+        "เกณฑ์การประเมิน": [pd.cut([overall_avg], bins=bins, labels=labels)[0]],
+        "ผลการประเมิน": [evaluate_result({"เกณฑ์การประเมิน": pd.cut([overall_avg], bins=bins, labels=labels)[0]})],
+        "จำนวน Device": [df["Device"].nunique()],
+        "เปอร์เซ็นต์ (%)": [100.0]
+    })
+
+    summary_df = pd.concat([month_summary, total_row], ignore_index=True)
+
+    summary_df["Device+Percent"] = summary_df.apply(
+        lambda row: f"{int(row['จำนวน Device']):,} ({row['เปอร์เซ็นต์ (%)']:.2f}%)", axis=1
+    )
+    """
     # สรุปจำนวน Device ในแต่ละเกณฑ์
     summary_df = df["ผลการประเมิน"].value_counts().reset_index()
     summary_df.columns = ["ผลการประเมิน", "จำนวน Device"]
@@ -78,7 +106,6 @@ def evaluate(df,bins,labels):
                             "เปอร์เซ็นต์ (%)",
                             "Device+Percent"]]
     show_df = summary_df.copy()[cols_show]
-
     fig1 = px.bar(
         #summary_df[summary_df["เกณฑ์การประเมิน"] != "รวมทั้งหมด"],  # ไม่เอาแถวรวมทั้งหมดไป plot,
         summary_df,
@@ -98,6 +125,29 @@ def evaluate(df,bins,labels):
         hole=0.4
     )
     fig2.update_traces(textinfo='percent+label')
+    """
+    # Bar Chart
+    fig1 = px.bar(
+        summary_df[summary_df["Month_str"] != "รวมทั้งหมด"],
+        x="Month_str",
+        y="จำนวน Device",
+        color="ผลการประเมิน",
+        text="Device+Percent",
+        barmode="group",
+        title="จำนวน Device ตามเกณฑ์การประเมิน (รายเดือน)"
+    )
+
+    # Pie Chart
+    fig2 = px.pie(
+        summary_df[summary_df["Month_str"] == "รวมทั้งหมด"],
+        names="ผลการประเมิน",
+        values="จำนวน Device",
+        title="สรุปผลรวมการประเมินทั้งหมด",
+        hole=0.4
+    )
+    fig2.update_traces(textinfo="percent+label")
+
+    show_df = summary_df[["Month_str", "ผลการประเมิน", "Device+Percent"]]
     return df, summary_df, fig1, fig2, show_df
 
 def range_ava(df,bins,labels):
@@ -152,33 +202,45 @@ def get_color(label):
     except:
         return "gray"
 
-uploaded_file = st.file_uploader("📥 อัปโหลดไฟล์ Excel หรือ CSV", type=["xlsx", "csv"])
 
-if uploaded_file:
-    if uploaded_file.name.endswith('.csv'):
-        df = pd.read_csv(uploaded_file, encoding="utf-8-sig")
-        st.success(f"✅ โหลดไฟล์ {uploaded_file.name} เรียบร้อย")
-    else:
+# ---- Upload and Merge ----
+uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
+
+if uploaded_files:
+    all_data = []
+    
+    for uploaded_file in uploaded_files:
         df = pd.read_excel(uploaded_file)
-        st.success(f"✅ โหลดไฟล์ {uploaded_file.name} ไม่เรียบร้อย")
-        
-    df_filtered, months = convert_date(df)
+
+        if "Availability Period" not in df.columns:
+            st.warning(f"❌ ไม่มีคอลัมน์ 'Availability Period' ในไฟล์ {uploaded_file.name}")
+            continue
+        df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
+        df["Availability (%)"] = df["Availability (%)"].replace({",": "", "%": ""}, regex=True)
+        df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
+
+        all_data.append(df)
+
+    df_combined = pd.concat(all_data, ignore_index=True)
     option_func = ['สถานะ', 'ประเมินผล', 'Histogram', 'เปรียบเทียบทุกเดือน']
     option_submenu = ['ระบบจำหน่ายสายส่ง','สถานีไฟฟ้า']
-    
     submenu_select = st.sidebar.radio(label="ระบบ: ", options = option_submenu)
     if submenu_select == 'ระบบจำหน่ายสายส่ง':
         title = 'อุปกรณ์ FRTU'
     else:
         title = 'สถานีไฟฟ้า'
-    
+
     func_select = st.sidebar.radio(label="function: ", options = option_func)   
     if func_select == 'ประเมินผล':
         bins_eva = [0, 80, 90, 100]
         labels_eva = ["0 <= Availability (%) <= 80", "80 < Availability (%) <= 90", "90 < Availability (%) <= 100"]
         cols = "จำนวน " + title
-        df_evaluate = df_filtered.copy()
+        df_evaluate = df_combined.copy()
+
         df_eva, summary_df, fig1, fig2, show_df = evaluate(df_evaluate,bins_eva,labels_eva)
+        st.plotly_chart(fig1)
+        st.plotly_chart(fig2)
+        st.dataframe(show_df)
         show_df.rename(columns={"Device+Percent": cols}, inplace=True)
         #st.markdown("### 🔹 ผลการประเมิน Availability (%) ของอุปกรณ์ในสถานีไฟฟ้า")
         #st.dataframe(show_df)
@@ -280,86 +342,110 @@ if uploaded_file:
     elif func_select == 'สถานะ':
         st.write("n/a")
     elif func_select == 'เปรียบเทียบทุกเดือน':
-        df_compare = df_filtered.copy()
-        #st.write(df_compare.columns.to_list())
-        df_compare["Availability (%)"] = df_compare["Availability (%)"].replace({",": "", "%": ""}, regex=True)
-        df_compare["Availability (%)"] = pd.to_numeric(df_compare["Availability (%)"], errors="coerce")
-        
-        # ล้างช่องว่าง + ลบ NaN
-        df_compare = df_compare[df_compare['Month'].notna()]
-        df_compare['Month'] = df_compare['Month'].astype(str).str.strip()
+        # ---- Upload and Merge ----
+        uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
 
-        # แปลงเป็น datetime แล้วเหลือแค่เดือน
-        df_compare['Month'] = pd.to_datetime(df_compare['Month'], format="%Y-%m", errors='coerce')
-        df_compare['Month'] = df_compare['Month'].dt.to_period('M').dt.to_timestamp()
+        if uploaded_files:
+            all_data = []
 
-        # สร้างช่วงเดือนครบ 12 เดือน (ตามปีที่เจอในข้อมูล)
-        min_month = df_compare['Month'].min()
-        max_month = df_compare['Month'].max()
-        
-                # สมมุติว่า df_compare['Month'] ถูกแปลงแล้ว และคำนวณ mean ตามเดือน
-        monthly_summary = df_compare.groupby('Month')['Availability (%)'].mean().reset_index()
+            for uploaded_file in uploaded_files:
+                df = pd.read_excel(uploaded_file)
 
-        # เติมเดือนที่หายไป (ถ้าต้องการให้มีครบ 12 เดือน)
-        all_months = pd.date_range(start="2025-01-01", end="2025-12-01", freq='MS')
-        monthly_summary_full = pd.DataFrame({'Month': all_months})
-        # รวมกับค่าจริงที่ได้จากข้อมูล
-        monthly_summary = df_compare.groupby('Month')['Availability (%)'].mean().reset_index()
-        monthly_summary_full = monthly_summary_full.merge(monthly_summary, on='Month', how='left')
-        #แปลงค่า NaN เป็น 0 หรือใช้วิธี interpolation (เลือกอย่างใดอย่างหนึ่ง)
-        # ทางเลือก 1: เติม 0 แทน NaN
-        monthly_summary_full['Availability (%)'] = monthly_summary_full['Availability (%)'].fillna(0)
-        # สร้างชื่อเดือนแบบสวยงาม
-        #monthly_summary_full['Month_str'] = monthly_summary_full['Month'].dt.strftime('%b %Y')
+                if "Availability Period" not in df.columns:
+                    st.warning(f"❌ ไม่มีคอลัมน์ 'Availability Period' ในไฟล์ {uploaded_file.name}")
+                    continue
 
-        # เรียงลำดับให้แน่นอน
-        #monthly_summary_full = monthly_summary_full.sort_values('Month')
+                df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
+                df["Availability (%)"] = df["Availability (%)"].replace({",": "", "%": ""}, regex=True)
+                df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
 
-        # Plot bar chart
-        fig = px.bar(
-            monthly_summary_full,
-            x="Month",
-            y="Availability (%)",
-            #text="Availability (%)",
-            text=monthly_summary_full["Availability (%)"].round(1),  # แสดงค่า % บนแท่ง
-            color="Availability (%)",
-            title="📊 Availability (%) รายเดือน (ครบ 12 เดือน)"
-        )
+                all_data.append(df)
 
-        # จัดรูปแบบแกน X ให้แสดงชื่อเดือน (เช่น Apr 2025)
-        fig.update_layout(
-            xaxis_title="เดือน",
-            yaxis_title="Availability (%)",
-            yaxis=dict(range=[0, 100]),
-            xaxis=dict(
-                tickformat="%b %Y",  # แสดง Apr 2025
-                tickmode='linear'
-            ),
-            showlegend=False,
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        # plot line graph
-        fig_monthly = px.line(
-            monthly_summary_full,
-            x="Month",
-            y="Availability (%)",
-            markers=True,
-            title="📈 Availability (%) รายเดือน (Line Graph)"
-        )
+            df_combined = pd.concat(all_data, ignore_index=True)
 
-        # ปรับแกน X ให้อ่านง่ายและครบ 12 เดือน
-        fig_monthly.update_layout(
-            xaxis=dict(
-                tickformat="%b %Y",  # Apr 2025
-                tickmode="linear",
-                tickangle=-45        # หมุน label แกน X ป้องกันซ้อน
-            ),
-            yaxis=dict(range=[0, 100]),  # สเกล 0-100
-            showlegend=False,
-        )
-        st.plotly_chart(fig_monthly, use_container_width=True)
+            # ---- Monthly Summary ----
+            df_combined["Year"] = df_combined["Month"].dt.year
+            selected_year = df_combined["Year"].mode()[0]  # ปีที่พบมากที่สุด
+
+            # จำกัดแค่ปีเดียว เช่น 2025
+            df_combined = df_combined[df_combined["Year"] == selected_year]
+
+            monthly_avg = df_combined.groupby(df_combined["Month"].dt.month)["Availability (%)"].mean().reset_index()
+            monthly_avg.columns = ["MonthNumber", "Availability (%)"]
+
+            # เติมเดือนที่หายไป (ให้มีครบ 1-12)
+            all_months_df = pd.DataFrame({"MonthNumber": list(range(1, 13))})
+            monthly_avg = all_months_df.merge(monthly_avg, on="MonthNumber", how="left")
+            #monthly_avg["Availability (%)"] = monthly_avg["Availability (%)"].fillna(0)
+
+            # แปลงเลขเดือนเป็นชื่อ (ภาษาไทย/อังกฤษ)
+            month_names = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+                        'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+            monthly_avg["Month"] = monthly_avg["MonthNumber"].apply(lambda x: month_names[x-1])
+
+            # ---- Bar Chart ----
+            fig_bar = px.bar(
+                monthly_avg,
+                x="Month",
+                y="Availability (%)",
+                text=monthly_avg["Availability (%)"].round(1),
+                color="Availability (%)",
+                title=f"📊 Availability (%) เฉลี่ยรายเดือน (Bar Chart) - ปี {selected_year}"
+            )
+            fig_bar.update_layout(
+                xaxis_title="เดือน",
+                yaxis_title="Availability (%)",
+                yaxis=dict(range=[0, 100]),
+                showlegend=False,
+                margin=dict(t=60, b=40)
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+            # ---- Line Chart ----
+            fig_line = px.line(
+                monthly_avg,
+                x="MonthNumber",
+                y="Availability (%)",
+                markers=True,
+                text=monthly_avg["Availability (%)"].round(1),
+                title=f"📈 Availability (%) เฉลี่ยรายเดือน (Line Chart) - ปี {selected_year}"
+            )
+
+            fig_line.update_traces(
+                textposition="bottom center",  # 👈 อยู่ใต้ marker เพื่อลดปัญหาล้น
+                connectgaps=False
+            )
+
+            fig_line.update_layout(
+                xaxis=dict(
+                    title="เดือน",
+                    tickmode="array",
+                    tickvals=list(range(1, 13)),
+                    ticktext=month_names
+                ),
+                yaxis=dict(
+                    title="Availability (%)",
+                    range=[0, 105]  # 👈 เพิ่มเพดานนิดหน่อยกันล้น
+                ),
+                showlegend=False,
+                margin=dict(t=80, b=40)  # 👈 เพิ่ม margin ด้านบน
+            )
+
+            st.plotly_chart(fig_line, use_container_width=True)
     else:
         st.warning("🚨 ไม่ได้เลือก function")
 
+"""   
+uploaded_file = st.file_uploader("📥 อัปโหลดไฟล์ Excel หรือ CSV", type=["xlsx", "csv"])
+if uploaded_file:
+    if uploaded_file.name.endswith('.csv'):
+        df = pd.read_csv(uploaded_file, encoding="utf-8-sig")
+        st.success(f"✅ โหลดไฟล์ {uploaded_file.name} เรียบร้อย")
+    else:
+        df = pd.read_excel(uploaded_file)
+        st.success(f"✅ โหลดไฟล์ {uploaded_file.name} ไม่เรียบร้อย")
+        
+    df_filtered, months = convert_date(df)
+"""  
 
     

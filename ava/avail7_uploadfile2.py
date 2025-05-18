@@ -51,9 +51,8 @@ if uploaded_files:
         y="Availability (%)",
         text=monthly_avg["Availability (%)"].round(1),
         color="Availability (%)",
-        title=f"📊 Availability (%) รายเดือน - ปี {selected_year}"
+        title=f"📊 Availability (%) เฉลี่ยรายเดือน (Bar Chart) - ปี {selected_year}"
     )
-
     fig_bar.update_layout(
         xaxis_title="เดือน",
         yaxis_title="Availability (%)",
@@ -66,23 +65,31 @@ if uploaded_files:
     # ---- Line Chart ----
     fig_line = px.line(
         monthly_avg,
-        x="Month",
+        x="MonthNumber",
         y="Availability (%)",
         markers=True,
         text=monthly_avg["Availability (%)"].round(1),
-        title=f"📈 Availability (%) รายเดือน (Line Chart) - ปี {selected_year}"
+        title=f"📈 Availability (%) เฉลี่ยรายเดือน (Line Chart) - ปี {selected_year}"
     )
 
     fig_line.update_traces(
-        textposition="top center",
-        connectgaps=False   # ❌ ไม่เชื่อมจุดที่ไม่มีข้อมูล
+        textposition="bottom center",  # 👈 อยู่ใต้ marker เพื่อลดปัญหาล้น
+        connectgaps=False
     )
 
     fig_line.update_layout(
-        xaxis_title="เดือน",
-        yaxis_title="Availability (%)",
-        yaxis=dict(range=[0, 100]),
+        xaxis=dict(
+            title="เดือน",
+            tickmode="array",
+            tickvals=list(range(1, 13)),
+            ticktext=month_names
+        ),
+        yaxis=dict(
+            title="Availability (%)",
+            range=[0, 105]  # 👈 เพิ่มเพดานนิดหน่อยกันล้น
+        ),
         showlegend=False,
-        margin=dict(t=60, b=40)
+        margin=dict(t=80, b=40)  # 👈 เพิ่ม margin ด้านบน
     )
+
     st.plotly_chart(fig_line, use_container_width=True)
