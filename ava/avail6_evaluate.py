@@ -3,6 +3,169 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 
+def plot_avg(df):
+    # --- เตรียมข้อมูล ---
+    df_avg = df_combined.copy()
+
+    # แปลง "Availability (%)" เป็น float
+    df_avg["Availability (%)"] = df_avg["Availability (%)"].replace({",": "", "%": ""}, regex=True)
+    df_avg["Availability (%)"] = pd.to_numeric(df_avg["Availability (%)"], errors="coerce")
+
+    # แปลง "Availability Period" เป็น datetime แล้วสร้าง "Month"
+    df_avg["Month"] = pd.to_datetime(df_avg["Availability Period"], format="%Y-%m", errors="coerce")
+    df_avg["Month_str"] = df_avg["Month"].dt.to_period("M").astype(str)
+
+    # ลบค่าที่ไม่สมบูรณ์
+    df_avg = df_avg.dropna(subset=["Availability (%)", "Device", "Month_str"])
+
+    # --- ตัวเลือกเดือน (Filter) ---
+    all_months = sorted(df_avg["Month_str"].unique())
+    selected_months = st.multiselect("📆 เลือกเดือนที่ต้องการวิเคราะห์", all_months, default=all_months)
+
+    # กรองข้อมูลตามเดือนที่เลือก
+    df_avg = df_avg[df_avg["Month_str"].isin(selected_months)]
+
+    # --- ตัวเลือก Device (Filter) ---
+    all_devices = sorted(df_avg["Device"].unique())
+    selected_devices = st.multiselect("🖥️ เลือก Device ที่ต้องการวิเคราะห์", all_devices, default=all_devices)
+
+    # กรองข้อมูลตาม Device ที่เลือก
+    df_avg = df_avg[df_avg["Device"].isin(selected_devices)]
+
+    # --- 🔹 กราฟที่ 1: ค่าเฉลี่ยรวมทุก Device รายเดือน ---
+    monthly_avg = df_avg.groupby("Month_str")["Availability (%)"].mean().reset_index()
+    monthly_avg["Availability (%)"] = monthly_avg["Availability (%)"].round(2)
+
+    fig_total_avg = px.line(
+        monthly_avg,
+        x="Month_str",
+        y="Availability (%)",
+        markers=True,
+        title="📈 ค่าเฉลี่ย Availability (%) ของทุก Device รายเดือน",
+        )
+    fig_total_avg.update_layout(
+        xaxis_title="เดือน",
+        yaxis_title="Average Availability (%)",
+        yaxis=dict(range=[0, 105]),
+        hovermode="x unified"
+        )
+
+    # --- 🔹 กราฟที่ 2: Availability (%) รายเดือนแยกตาม Device ---
+    device_monthly = df_avg.groupby(["Month_str", "Device"])["Availability (%)"].mean().reset_index()
+    device_monthly["Availability (%)"] = device_monthly["Availability (%)"].round(2)
+
+    fig_by_device = px.line(
+        device_monthly,
+        x="Month_str",
+        y="Availability (%)",
+        color="Device",
+        markers=True,
+        title="📊 Availability (%) รายเดือนแยกตาม Device"
+        )
+    fig_by_device.update_layout(
+        xaxis_title="เดือน",
+        yaxis_title="Availability (%)",
+        yaxis=dict(range=[0, 105]),
+        hovermode="x unified"
+        )
+
+    # --- แสดงผล ---
+    #st.plotly_chart(fig_total_avg, use_container_width=True)
+    #st.plotly_chart(fig_by_device, use_container_width=True)
+
+    fig_scatter = px.scatter(
+        df_avg,
+        x="Device",
+        y="Availability (%)",
+        color="Month_str",  # เพื่อแยกสีตามเดือน
+        title="📍 Availability (%) ของแต่ละ Device (Scatter)",
+        hover_data=["Month_str"],  # แสดงเดือนใน hover
+        )
+
+    fig_scatter.update_layout(
+        xaxis_title="Device",
+        yaxis_title="Availability (%)",
+        yaxis=dict(range=[0, 105]),
+        xaxis_tickangle=-45,
+        height=600
+        )
+
+    st.plotly_chart(fig_scatter, use_container_width=True)
+    
+def plot(df,type):
+    # เตรียมข้อมูล
+    df_line = df_combined.copy()
+
+    # แปลง Availability เป็นตัวเลข
+    df_line["Availability (%)"] = df_line["Availability (%)"].replace({",": "", "%": ""}, regex=True)
+    df_line["Availability (%)"] = pd.to_numeric(df_line["Availability (%)"], errors="coerce")
+
+    # แปลงคอลัมน์เป็น datetime และแยกเป็นเดือน
+    df_line["Month"] = pd.to_datetime(df_line["Availability Period"], format="%Y-%m", errors="coerce")
+    df_line["Month_str"] = df_line["Month"].dt.to_period("M").astype(str)
+
+    # รายชื่อเดือนทั้งหมด
+    all_months = sorted(df_line["Month_str"].dropna().unique())
+
+    # 🧭 ตัวเลือก: กรองเดือน
+    selected_months = st.multiselect("📆 เลือกเดือนที่ต้องการแสดง (หลายเดือน)", all_months, default=all_months)
+
+    # กรองข้อมูลตามเดือนที่เลือก
+    filtered_df = df_line[df_line["Month_str"].isin(selected_months)]
+
+    # วาด Line Plot: Availability ของแต่ละ Device ตามเดือน
+    fig = px.line(
+        filtered_df,
+        x="Month_str",
+        y="Availability (%)",
+        color="Device",
+        markers=True,
+        title="📈 Availability (%) ของแต่ละ Device ตามเดือน"
+    )
+
+    fig.update_layout(
+        xaxis_title="เดือน",
+        yaxis_title="Availability (%)",
+        yaxis=dict(range=[0, 105]),
+        hovermode="x unified"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def Plot_summary(df):
+    # เตรียม DataFrame แบบ Long format สำหรับ plot
+    plot_df = df.copy()
+    plot_df["Month"] = pd.to_datetime(plot_df["Availability Period"], format="%Y-%m", errors="coerce")
+    plot_df["Month_num"] = plot_df["Month"].dt.month
+    month_names = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+    plot_df["Month_name"] = plot_df["Month_num"].apply(lambda x: month_names[x - 1] if pd.notnull(x) else "")
+
+    # กรองเฉพาะแถวที่ Month_name มีค่า (ไม่เป็นค่าว่าง)
+    plot_df = plot_df[plot_df["Month_name"] != ""]
+
+    # สร้างกราฟเส้น
+    fig = px.line(
+        plot_df,
+        x="Month_name",
+        y="Availability (%)",
+        color="Device",
+        markers=True,
+        title="📈 Availability (%) รายเดือนของแต่ละ Device",
+    )
+
+    # ปรับแกนและรูปแบบ
+    fig.update_layout(
+        xaxis_title="เดือน",
+        yaxis_title="Availability (%)",
+        yaxis=dict(range=[0, 100]),
+        legend_title="Device",
+        margin=dict(t=60, b=40)
+    )
+
+    # แสดงใน Streamlit
+    st.plotly_chart(fig, use_container_width=True)
+
 def df_addColMonth(df):
     # แปลงคอลัมน์เดือน
     df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
@@ -31,12 +194,9 @@ def df_addColMonth(df):
     # จัดรูปแบบตัวเลขให้สวยงาม
     pivot_df = pivot_df.round(2)
     
-    # แสดงผล
-    st.dataframe(pivot_df)
-    
     return pivot_df
 
-def evaluate(df,bins,labels):
+def evaluate(df,bins,labels,flag):
     #เพิ่ม Month
     df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
     df["Month_str"] = df["Month"].dt.strftime("%Y-%m")
@@ -61,10 +221,10 @@ def evaluate(df,bins,labels):
     )
     month_summary["จำนวน Device"] = df.groupby("Month_str")["Device"].nunique().values
     month_summary["เปอร์เซ็นต์ (%)"] = 100.0
-    st.write(month_summary)
-    #month_summary_ = month_summary.copy()
-    #month_summary_1 = month_summary_["Availability (%)"].mean()
-    #st.write(month_summary_1)
+
+    ### ✅
+    st.info(f"✅ สรุป Avg. Availability (%) รวมของ {flag} แยกตามเดือน")
+    st.write(month_summary)      
 
     # คำนวณค่าเฉลี่ยของ Availability (%) แยกตาม Device โดยเฉลี่ยจากหลายเดือน
     device_avg = df.groupby("Device")["Availability (%)"].mean().reset_index()
@@ -85,7 +245,9 @@ def evaluate(df,bins,labels):
 
     # รวมเข้ากับตาราง avg
     device_avg = device_avg.merge(device_months, on="Device")
-    # แสดงผล
+    
+    ### ✅
+    st.info(f"✅ สรุป Avg. Availability (%) แยกตาม{flag}")
     st.dataframe(device_avg)
 
     # สรุปรวมทั้งหมด
@@ -104,7 +266,12 @@ def evaluate(df,bins,labels):
         lambda row: f"{int(row['จำนวน Device']):,} ({row['เปอร์เซ็นต์ (%)']:.2f}%)", axis=1
     )
     pivot_df = df_addColMonth(df)
-    st.write(df)
+
+    ### ✅
+    st.info(f"✅ สรุป Availability (%) แต่ละ{flag}แยกตามเดือน")
+    st.write(pivot_df)
+
+
     def test():
         """
         # สรุปจำนวน Device ในแต่ละเกณฑ์
@@ -295,10 +462,10 @@ if uploaded_files:
         cols = "จำนวน " + title
         df_evaluate = df_combined.copy()
 
-        df_eva, summary_df, fig1, fig2, show_df = evaluate(df_evaluate,bins_eva,labels_eva)
+        df_eva, summary_df, fig1, fig2, show_df = evaluate(df_evaluate,bins_eva,labels_eva,title)
         #st.plotly_chart(fig1)
         #st.plotly_chart(fig2)
-        st.dataframe(show_df)
+        #st.dataframe(show_df)
         show_df.rename(columns={"Device+Percent": cols}, inplace=True)
         #st.markdown("### 🔹 ผลการประเมิน Availability (%) ของอุปกรณ์ในสถานีไฟฟ้า")
         #st.dataframe(show_df)
@@ -340,14 +507,104 @@ if uploaded_files:
         st.plotly_chart(fig3, use_container_width=True)
 
     elif func_select == 'Histogram':
-        bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-        labels = [f"{bins[i]}-{bins[i+1]} %" for i in range(len(bins)-1)]  # ["0-10", "10-20", ..., "90-100"]
-        df_histogram = df_filtered.copy()  # ป้องกัน SettingWithCopyWarning
+        
+        df_histogram = df_combined.copy()  # ป้องกัน SettingWithCopyWarning
         # ลบ % และ comma ออกก่อน แล้วแปลงเป็น float
         df_histogram["Availability (%)"] = df_histogram["Availability (%)"].replace({",": "", "%": ""}, regex=True)
         df_histogram["Availability (%)"] = pd.to_numeric(df_histogram["Availability (%)"], errors="coerce")
+        #add แปลงเป็นเดือน (ชื่อไทย)
+        df_histogram["Month"] = pd.to_datetime(df_histogram["Availability Period"], format="%Y-%m", errors="coerce")
+        df_histogram["Month_num"] = df_histogram["Month"].dt.month
+        df_histogram["Month_year"] = df_histogram["Month"].dt.to_period("M").astype(str)  # รูปแบบ: 2025-03
+        #thai_months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+                    #'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+        #df_histogram["Month_name"] = df_histogram["Month_num"].apply(lambda x: thai_months[x - 1] if pd.notnull(x) else "")
+
+        # กำหนดช่วงกลุ่ม Availability
+        bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+        labels = [f"{bins[i]}-{bins[i+1]} %" for i in range(len(bins)-1)]
         df_histogram["Availability Group"] = pd.cut(df_histogram["Availability (%)"], bins=bins, labels=labels, right=True)
-        grouped_counts = df_histogram["Availability Group"].value_counts().sort_index().reset_index()
+
+        # --- สร้าง Selectbox สำหรับเลือกเดือน ---
+        available_months = sorted(df_histogram["Month_year"].dropna().unique())
+        selected_month = st.selectbox("📅 เลือกเดือนที่ต้องการดู Histogram", available_months)
+
+        # --- กรองข้อมูลเฉพาะเดือนที่เลือก ---
+        filtered_df = df_histogram[df_histogram["Month_year"] == selected_month]
+
+        # Group ข้อมูล
+        #grouped_counts = df_histogram.groupby(["Month_name", "Availability Group"]).size().reset_index(name="จำนวน Device")
+        #grouped_counts = df_histogram["Availability Group"].value_counts().sort_index().reset_index() ###ของเดิม
+
+        # --- สร้าง Histogram ---
+        grouped_counts = filtered_df["Availability Group"].value_counts().sort_index().reset_index()
+        grouped_counts.columns = ["ช่วง % Availability", "จำนวน Device"]
+
+        """
+        # Plot เป็นกราฟแยกตามเดือน
+        fig_old = px.bar(
+            grouped_counts,
+            x="Availability Group",
+            y="จำนวน Device",
+            color="Month_name",
+            barmode="group",  # หรือ "stack" ก็ได้
+            text="จำนวน Device",
+            title="📊 จำนวน Device ในแต่ละช่วง % Availability แยกตามเดือน",
+            color_discrete_sequence=px.colors.qualitative.Set3
+        )
+        fig_old.update_layout(
+            xaxis_title="ช่วง % Availability",
+            yaxis_title="จำนวน Device",
+            yaxis_type="log"
+        )
+        """
+            # วาดกราฟ
+        fig = px.bar(
+            grouped_counts,
+            x="ช่วง % Availability",
+            y="จำนวน Device",
+            color="ช่วง % Availability",
+            text="จำนวน Device",
+            title=f"📊 จำนวน Device ในแต่ละช่วง % Availability (เดือน {selected_month})",
+            color_discrete_sequence=[
+                "#FF0000", "#FF4000", "#FF8000", "#FFBF00", "#FFFF00",
+                "#BFFF00", "#80FF00", "#40FF00", "#00FF00", "#00CC00"
+            ]
+        )
+        fig.update_layout(
+            xaxis_title="ช่วง % Availability",
+            yaxis_title="จำนวน Device",
+            showlegend=False,
+        )
+
+        fig.update_traces(texttemplate="%{text:,}", textposition="outside")
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        typeplot = "Line"
+        plot(df_combined,typeplot)
+        plot_avg(df_combined)
+
+        fig2 = px.bar(
+            grouped_counts,
+            x="Availability Group",
+            y="จำนวน Device",
+            facet_col="Month_name",
+            color="Availability Group",
+            text="จำนวน Device",
+            title="📊 Availability Distribution รายเดือน (แยกกราฟต่อเดือน)",
+            category_orders={"Availability Group": labels},
+            color_discrete_sequence=px.colors.sequential.YlGn
+        )
+
+        fig2.update_layout(
+            height=500,
+            showlegend=False,
+            yaxis_type="log"
+        )
+        fig2.update_traces(texttemplate="%{text:,}", textposition="outside")
+
+        st.plotly_chart(fig2, use_container_width=True)
         cols = "จำนวน " + title
         grouped_counts.rename(columns={"Availability Group": "ช่วง % Availability","count": cols}, inplace=True)
         fig = px.bar(
