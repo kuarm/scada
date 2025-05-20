@@ -587,7 +587,7 @@ def main():
 
                 # แปลงเป็นปี-เดือน
                 month_range = pd.date_range(min_date, max_date, freq='MS')
-                month_options = month_range.strftime('%Y-%m').tolist()
+                
                 #month_options = ['2025-01', '2025-02', '2025-03']
                 #st.write(month_options)
 
