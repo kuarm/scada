@@ -23,15 +23,13 @@ def show_month(df):
     pivot_df = pivot_df.reindex(columns=month_names)
 
     # เพิ่มคอลัมน์ค่าเฉลี่ยของแต่ละ Device
-    pivot_df["Avg Availability (%)"] = pivot_df.mean(axis=1)
+    pivot_df["Avg สั่งการสำเร็จ (%)"] = pivot_df.mean(axis=1)
 
     # Reset index เพื่อให้ Device เป็นคอลัมน์
     pivot_df = pivot_df.reset_index()
 
     # จัดรูปแบบตัวเลขให้สวยงาม
     pivot_df = pivot_df.round(2)
-
-    st.dataframe(pivot_df)
     
     return pivot_df
 
@@ -49,12 +47,20 @@ if uploaded_files:
             continue
         df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
         df["สั่งการสำเร็จ (%)"] = df["สั่งการสำเร็จ (%)"].replace({",": "", "%": ""}, regex=True)
-        df["สั่งการสำเร็จ (%)"] = pd.to_numeric(df["สั่งการสำเร็จ (%)"], errors="coerce")
 
+        #df["สั่งการสำเร็จ (%)"] = df["สั่งการสำเร็จ (%)"].astype(str).str.replace(",", "").str.replace("%", "").str.strip()
+        df["สั่งการสำเร็จ (%)"] = pd.to_numeric(df["สั่งการสำเร็จ (%)"], errors="coerce")
+        
         all_data.append(df)
 
     df_combined = pd.concat(all_data, ignore_index=True)
+    format_dict = {
+        "สั่งการทั้งหมด": "{:,.0f}",       # จำนวนเต็ม มี comma
+        "สั่งการสำเร็จ": "{:,.0f}",        # จำนวนเต็ม มี comma
+        "สั่งการสำเร็จ (%)": "{:.2f}"     # ทศนิยม 2 ตำแหน่ง
+    }
 
+    st.dataframe(df_combined.style.format(format_dict))
     option_func = ['สถานะ', 'ประเมินผล', 'Histogram', 'เปรียบเทียบทุกเดือน']
     option_submenu = ['ระบบจำหน่ายสายส่ง','สถานีไฟฟ้า']
     submenu_select = st.sidebar.radio(label="ระบบ: ", options = option_submenu)
@@ -65,20 +71,163 @@ if uploaded_files:
         title = 'สถานีไฟฟ้า'
     
     st.dataframe(df_combined)
-    pivot_df = show_month(df_combined)
 
-    fig_by_device = px.line(
+    pivot_df = show_month(df_combined)
+    st.dataframe(pivot_df)
+
+    device_options = pivot_df["Device"].unique()
+    selected_devices = st.multiselect("เลือก Device ที่ต้องการแสดง", device_options, default=device_options)
+
+    pivot_df_filtered = pivot_df[pivot_df["Device"].isin(selected_devices)]
+
+    df_plot = pivot_df_filtered.melt(id_vars=["Device"], 
+                        value_vars=[col for col in pivot_df.columns if col not in ["Device", "Avg สั่งการสำเร็จ (%)"]],
+                        var_name="เดือน", 
+                        value_name="สั่งการสำเร็จ (%)")
+
+    # plot line chart
+    fig_line = px.line(df_plot, 
+                x="เดือน", 
+                y="สั่งการสำเร็จ (%)", 
+                color="Device", 
+                markers=True,
+                title="📈 สั่งการสำเร็จ (%) รายเดือนแยกตาม Device")
+
+    fig_line.update_layout(xaxis_title="เดือน", yaxis_title="สั่งการสำเร็จ (%)", yaxis=dict(range=[0, 105]))
+    
+
+    fig_bar = px.bar(pivot_df_filtered, 
+              x="Device", 
+              y="Avg สั่งการสำเร็จ (%)", 
+              text="Avg สั่งการสำเร็จ (%)", 
+              title="📊 ค่าเฉลี่ยสั่งการสำเร็จ (%) ของแต่ละ Device")
+
+    fig_bar.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+    fig_bar.update_layout(xaxis_tickangle=-45, yaxis_range=[0, 105], yaxis_title="Avg สั่งการสำเร็จ (%)")
+    
+    # ✅ Scatter plot: แสดง Avg ของแต่ละ Device
+    fig3 = px.scatter(
         pivot_df,
         x="Device",
+        y="Avg สั่งการสำเร็จ (%)",
+        text="Avg สั่งการสำเร็จ (%)",
+        color="Avg สั่งการสำเร็จ (%)",
+        color_continuous_scale="Viridis",
+        title="🔵 Scatter: ค่าเฉลี่ยสั่งการสำเร็จ (%) ของแต่ละ Device"
+    )
+    fig3.update_traces(textposition="top center")
+    fig3.update_layout(xaxis_tickangle=-45, yaxis_range=[0, 105])
+    
+
+    # แปลง wide → long เพื่อดู scatter รายเดือน
+    df_scatter = pivot_df.melt(
+        id_vars=["Device"], 
+        value_vars=[col for col in pivot_df.columns if col not in ["Device", "Avg สั่งการสำเร็จ (%)"]],
+        var_name="เดือน", 
+        value_name="สั่งการสำเร็จ (%)"
+    )
+
+    fig3_month = px.scatter(
+        df_scatter,
+        x="Device",
         y="สั่งการสำเร็จ (%)",
-        color="Device",
-        markers=True,
-        title="📊 Availability (%) รายเดือนแยกตาม Device"
-        )
-    fig_by_device.update_layout(
-        xaxis_title="เดือน",
-        yaxis_title="Availability (%)",
-        yaxis=dict(range=[0, 105]),
-        hovermode="x unified"
-        )
-    st.plotly_chart(fig_by_device, use_container_width=True)
+        color="เดือน",
+        title="🔵 Scatter: สั่งการสำเร็จ (%) รายเดือนตาม Device"
+    )
+    fig3_month.update_layout(xaxis_tickangle=-45, yaxis_range=[0, 105])
+    
+
+    # Histogram จากค่าเฉลี่ยของแต่ละ Device
+    fig4 = px.histogram(
+        pivot_df,
+        x="Avg สั่งการสำเร็จ (%)",
+        nbins=10,
+        title="📊 Histogram: ความถี่ของค่าเฉลี่ยสั่งการสำเร็จ (%)",
+        color_discrete_sequence=["#0072B2"]
+    )
+    fig4.update_layout(xaxis_title="Avg สั่งการสำเร็จ (%)", yaxis_title="จำนวน Device")
+    
+
+    # melt ก่อน
+    df_hist = df_scatter.copy()
+
+    fig4_month = px.histogram(
+        df_hist,
+        x="สั่งการสำเร็จ (%)",
+        color="เดือน",
+        nbins=10,
+        barmode="overlay",  # หรือ "group"
+        title="📊 Histogram: สั่งการสำเร็จ (%) แยกตามเดือน"
+    )
+    fig4_month.update_layout(xaxis_title="สั่งการสำเร็จ (%)", yaxis_title="จำนวน")
+    
+
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "📈 Line Chart", 
+    "📊 Bar Chart", 
+    "🔵 Scatter (Avg)", 
+    "🔵 Scatter (รายเดือน)", 
+    "📊 Histogram (Avg)", 
+    "📊 Histogram (รายเดือน)"
+])
+
+    with tab1:
+        st.plotly_chart(fig_line, use_container_width=True)
+
+    with tab2:
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+    with tab3:
+        st.plotly_chart(fig3, use_container_width=True)
+
+    with tab4:
+        st.plotly_chart(fig3_month, use_container_width=True)
+
+    with tab5:
+        st.plotly_chart(fig4, use_container_width=True)
+
+    with tab6:
+        st.plotly_chart(fig4_month, use_container_width=True)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("📈 Line Chart")
+        st.plotly_chart(fig_line, use_container_width=True, key="line_chart")
+
+    with col2:
+        st.subheader("🔵 Scatter (Avg)")
+        st.plotly_chart(fig3, use_container_width=True, key="scatter_avg")
+
+    col3, col4 = st.columns(2)
+
+    with col3:
+        st.subheader("📊 Histogram (Avg)")
+        st.plotly_chart(fig4, use_container_width=True, key="histogram_avg")
+
+    with col4:
+        st.subheader("📊 Histogram (รายเดือน)")
+        st.plotly_chart(fig4_month, use_container_width=True, key="histogram_month")
+    
+    # Tabs แยกประเภทกราฟ
+    tab1, tab2 = st.tabs(["📊 กราฟรวม", "🧪 เปรียบเทียบ"])
+
+    with tab1:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("📈 Line Chart")
+            st.plotly_chart(fig_line, use_container_width=True, key="line_chart_tab1")
+        with col2:
+            st.subheader("🔵 Scatter (Avg)")
+            st.plotly_chart(fig3, use_container_width=True, key="scatter_avg_tab1")
+
+    with tab2:
+        col3, col4 = st.columns(2)
+        with col3:
+            st.subheader("🔵 Scatter รายเดือน")
+            st.plotly_chart(fig3_month, use_container_width=True, key="scatter_month_tab2")
+        with col4:
+            st.subheader("📊 Bar Chart: ค่าเฉลี่ยแต่ละ Device")
+            st.plotly_chart(fig_bar, use_container_width=True, key="bar_chart_tab2")
+
+
