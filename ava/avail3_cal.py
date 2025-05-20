@@ -140,6 +140,7 @@ def sort_state_chain1(df):
 
     result = []
     grouped = df.groupby(["Device", "Field change time"])
+    
 
     for (_, timestamp), group_df in grouped:
         if len(group_df) == 1:
@@ -174,11 +175,11 @@ def sort_state_chain1(df):
                 sorted_group = pd.concat([sorted_group, extras])
 
         result.append(sorted_group)
-
+        st.write(result)
     return pd.concat(result).sort_values(by=["Field change time"]).reset_index(drop=True)
 
 def adjust_stateandtime(df, startdate, enddate):
-
+    
     # แปลงให้เป็น datetime ถ้ายังเป็น str อยู่
     if isinstance(startdate, str):
         startdate = pd.to_datetime(startdate)
@@ -190,6 +191,9 @@ def adjust_stateandtime(df, startdate, enddate):
         return df
 
     df["Next Change Time"] = df["Field change time"].shift(-1) # คำนวณเวลาสิ้นสุดของแต่ละสถานะ
+    #st.write(df["Field change time"].iloc[123])
+    #st.write(df["Next Change Time"].iloc[123])
+    st.write(df)
     # ✅ **เพิ่ม State เริ่มต้น ถ้าจำเป็น**
     first_change_time = df["Field change time"].iloc[0]
     if first_change_time > startdate:
@@ -228,13 +232,14 @@ def adjust_stateandtime(df, startdate, enddate):
     df["Adjusted End"] = df["Next Change Time"].clip(lower=startdate, upper=enddate)
     df["Adjusted Start"] = pd.to_datetime(df["Adjusted Start"], errors='coerce')
     df["Adjusted End"] = pd.to_datetime(df["Adjusted End"], errors='coerce')
+    
     # คำนวณช่วงเวลาของแต่ละ State (วินาที)
     df["Adjusted Duration (seconds)"] = (df["Adjusted End"] - df["Adjusted Start"]).dt.total_seconds()
     df = df.dropna(subset=["Adjusted Duration (seconds)"])
-
+    
     # กรองข้อมูลเฉพาะที่อยู่ในช่วงเวลาที่กำหนด
     df = df[(df["Adjusted Start"] >= startdate) & (df["Adjusted End"] <= enddate)]
-
+    st.write(df)
     # ใส่ค่า start_time และ end_time ในทุกแถว
     df["Start Time Filter"] = startdate
     df["End Time Filter"] = enddate
@@ -303,8 +308,9 @@ def calculate_device_availability(df_filtered):
     # คำนวณเวลาที่ Device อยู่ในสถานะปกติ
     device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
-    #st.dataframe(df_filtered[df_filtered["Device"] == 'PBA_S'])
-    #st.dataframe(device_online_duration[device_online_duration["Device"] == 'PBA_S'])
+
+    st.dataframe(df_filtered[df_filtered["Device"] == 'RNA_S'])
+    st.dataframe(device_online_duration[device_online_duration["Device"] == 'RNA_S'])
     # รวมข้อมูลทั้งสองตาราง
     device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
     # คำนวณ Availability (%)
@@ -632,8 +638,9 @@ def main():
             """
         
         ###-----Calc-----###
+        df_event = df_event[df_event["Device"] == "RNA_S"]
         df_split = split_state(df_event)
-        df_combined_sort = sort_state_chain1(df_split)
+        df_combined_sort = sort_state_chain(df_split)
         #df_combined_sort["Field change time"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
@@ -666,8 +673,8 @@ def main():
         #if mode_select == 'substation':
         #    flag = 'substation'
         #else:
-        flag = 'frtu'
-        #flag = 'substation'
+        #flag = 'frtu'
+        flag = 'substation'
         df_merged = merge_data(df_remote_sub,df_merged,flag)
         df_merged_add = add_value(df_merged)
 

@@ -4,34 +4,59 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 def show_month(df):
-    # แปลงคอลัมน์เดือน
-    df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
-    df["Month_num"] = df["Month"].dt.month
-    month_names = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
-    df["Month_name"] = df["Month_num"].apply(lambda x: month_names[x - 1] if pd.notnull(x) else "")
+    df_pivot = df.copy()
 
-    # Pivot table: row = Device, column = Month_name, values = Availability (%)
-    pivot_df = df.pivot_table(
+    # แปลงคอลัมน์เดือน
+    df_pivot["Month"] = pd.to_datetime(df_pivot["Availability Period"], format="%Y-%m", errors="coerce")
+    df_pivot["Month_num"] = df_pivot["Month"].dt.month
+
+    month_names = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+                   'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+    df_pivot["Month_name"] = df_pivot["Month_num"].apply(lambda x: month_names[int(x) - 1] if pd.notnull(x) else "")
+
+    st.write("ค่าไม่ใช่ตัวเลข (จะถูกแปลงเป็น NaN):")
+    st.write(df_pivot[df_pivot["สั่งการสำเร็จ (%)"].isnull()])
+
+    # Pivot: row = Device, col = month, val = success %
+    pivot_df = df_pivot.pivot_table(
         index="Device",
         columns="Month_name",
         values="สั่งการสำเร็จ (%)",
         aggfunc="mean"
     )
 
-    # เรียงลำดับคอลัมน์ตามเดือน
+    st.write("Pivot แล้ว:")
+    st.dataframe(pivot_df)
+
+    st.write("ตรวจอุปกรณ์ที่ไม่มีข้อมูลทุกเดือน:")
+    st.write(pivot_df[pivot_df.drop(columns="Avg สั่งการสำเร็จ (%)").isnull().all(axis=1)])
+
+    # ตรวจอุปกรณ์ที่ไม่มีข้อมูลเลย
+    null_mask = pivot_df.drop(columns="Avg สั่งการสำเร็จ (%)").isnull().all(axis=1)
+    devices_all_null = pivot_df[null_mask].index.tolist()
+
+    # เรียงเดือน
     pivot_df = pivot_df.reindex(columns=month_names)
 
-    # เพิ่มคอลัมน์ค่าเฉลี่ยของแต่ละ Device
-    pivot_df["Avg สั่งการสำเร็จ (%)"] = pivot_df.mean(axis=1)
+    # ค่าเฉลี่ย (ยังเป็น float ตอนนี้)
+    pivot_df["Avg สั่งการสำเร็จ (%)"] = pivot_df.mean(axis=1, skipna=True)
 
-    # Reset index เพื่อให้ Device เป็นคอลัมน์
+    # คัดลอกเพื่อเช็คอุปกรณ์ที่ไม่มีข้อมูลเลย
+    null_mask = pivot_df.drop(columns="Avg สั่งการสำเร็จ (%)").isnull().all(axis=1)
+    devices_all_null = pivot_df[null_mask].index.tolist()
+    st.write(devices_all_null)
+    # จัดรูปแบบเปอร์เซ็นต์ (xx.xx%) ถ้าไม่ใช่ NaN
+    def format_percent(val):
+        return f"{val:.2f}%" if pd.notnull(val) else ""
+
+    for col in month_names + ["Avg สั่งการสำเร็จ (%)"]:
+        if col in pivot_df.columns:
+            pivot_df[col] = pivot_df[col].apply(format_percent)
+
+    # Reset index
     pivot_df = pivot_df.reset_index()
 
-    # จัดรูปแบบตัวเลขให้สวยงาม
-    pivot_df = pivot_df.round(2)
-    
-    return pivot_df
+    return pivot_df, devices_all_null
 
 # ---- Upload and Merge ----
 uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
@@ -44,7 +69,10 @@ if uploaded_files:
 
         if "Availability Period" not in df.columns:
             st.warning(f"❌ ไม่มีคอลัมน์ 'Availability Period' ในไฟล์ {uploaded_file.name}")
-            continue
+            
+        #df["สั่งการสำเร็จ (%)"] = df["สั่งการสำเร็จ (%)"].replace({",": "", "%": "", "": None}, regex=True)
+        #df["สั่งการสำเร็จ (%)"] = pd.to_numeric(df["สั่งการสำเร็จ (%)"], errors="coerce")
+
         df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
         df["สั่งการสำเร็จ (%)"] = df["สั่งการสำเร็จ (%)"].replace({",": "", "%": ""}, regex=True)
 
@@ -54,13 +82,13 @@ if uploaded_files:
         all_data.append(df)
 
     df_combined = pd.concat(all_data, ignore_index=True)
+
     format_dict = {
         "สั่งการทั้งหมด": "{:,.0f}",       # จำนวนเต็ม มี comma
         "สั่งการสำเร็จ": "{:,.0f}",        # จำนวนเต็ม มี comma
         "สั่งการสำเร็จ (%)": "{:.2f}"     # ทศนิยม 2 ตำแหน่ง
     }
 
-    st.dataframe(df_combined.style.format(format_dict))
     option_func = ['สถานะ', 'ประเมินผล', 'Histogram', 'เปรียบเทียบทุกเดือน']
     option_submenu = ['ระบบจำหน่ายสายส่ง','สถานีไฟฟ้า']
     submenu_select = st.sidebar.radio(label="ระบบ: ", options = option_submenu)
@@ -70,12 +98,18 @@ if uploaded_files:
     else:
         title = 'สถานีไฟฟ้า'
     
-    st.dataframe(df_combined)
+    #st.dataframe(df_combined)
 
-    pivot_df = show_month(df_combined)
-    st.dataframe(pivot_df)
+    ### ✅
+    st.info(f"✅ สรุป สั่งการสำเร็จ (%) แต่ละ {title} แยกตามเดือน")
+    #pivot_df = pivot_df.style.format(format_dict)
+    pivot_df, devices_all_null = show_month(df_combined)
+    #st.dataframe(pivot_df)
+    #st.write(devices_all_null)
 
-    device_options = pivot_df["Device"].unique()
+        
+
+    device_options = pivot_df_["Device"].unique()
     selected_devices = st.multiselect("เลือก Device ที่ต้องการแสดง", device_options, default=device_options)
 
     pivot_df_filtered = pivot_df[pivot_df["Device"].isin(selected_devices)]
@@ -171,6 +205,7 @@ if uploaded_files:
     "📊 Histogram (รายเดือน)"
 ])
 
+    """
     with tab1:
         st.plotly_chart(fig_line, use_container_width=True)
 
@@ -229,5 +264,5 @@ if uploaded_files:
         with col4:
             st.subheader("📊 Bar Chart: ค่าเฉลี่ยแต่ละ Device")
             st.plotly_chart(fig_bar, use_container_width=True, key="bar_chart_tab2")
-
+"""
 

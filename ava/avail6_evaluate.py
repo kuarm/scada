@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 
 def plot_avg(df):
     # --- เตรียมข้อมูล ---
-    df_avg = df_combined.copy()
+    df_avg = df.copy()
 
     # แปลง "Availability (%)" เป็น float
     df_avg["Availability (%)"] = df_avg["Availability (%)"].replace({",": "", "%": ""}, regex=True)
