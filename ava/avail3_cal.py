@@ -115,7 +115,6 @@ def sort_state_chain(df):
         if not start_candidates:
             # ถ้าไม่มีจุดเริ่มต้นที่ชัดเจน (เช่น loop หรือ incomplete), ใช้ลำดับเดิมไปก่อน
             sorted_group = group_df
-            st.dataframe(group_df)
         else:
             current_state = start_candidates[0]
             rows = []
@@ -128,7 +127,6 @@ def sort_state_chain(df):
                 current_state = row["New State"]
 
             sorted_group = pd.DataFrame(rows)
-        st.dataframe(sorted_group)
         result.append(sorted_group)
 
     # รวมผลลัพธ์ที่จัดเรียงแล้ว
@@ -175,8 +173,70 @@ def sort_state_chain1(df):
                 sorted_group = pd.concat([sorted_group, extras])
 
         result.append(sorted_group)
-        st.write(result)
-    return pd.concat(result).sort_values(by=["Field change time"]).reset_index(drop=True)
+        #pd.concat(result).sort_values(by=["Field change time"]).reset_index(drop=True)
+    return pd.concat(result).reset_index(drop=True)
+
+# Define the revised function to sort chain by exact time groups
+# Revised function to ensure proper ordering even when timestamps are identical
+def sort_state_chain_by_time_exact_multi(df):
+    """จัดเรียง chain ภายในแต่ละ Device + Field change time สำหรับหลายอุปกรณ์"""
+    df["Field change time"] = pd.to_datetime(df["Field change time"])
+    result = []
+
+    for device_id in df["Device"].unique():
+        df_device = df[df["Device"] == device_id].copy()
+        grouped = df_device.groupby("Field change time")
+
+        for _, group_df in grouped:
+            if len(group_df) == 1:
+                result.append(group_df)
+                continue
+
+            if "Previous State" not in group_df.columns or "New State" not in group_df.columns:
+                result.append(group_df)
+                continue
+
+            group_df = group_df.dropna(subset=["Previous State", "New State"])
+
+            state_map = {}
+            for _, row in group_df.iterrows():
+                key = row["Previous State"]
+                if pd.notna(key) and key not in state_map:
+                    state_map[key] = row
+
+            new_states = set(group_df["New State"])
+            prev_states = set(group_df["Previous State"])
+            start_candidates = list(prev_states - new_states)
+
+            if not start_candidates:
+                sorted_group = group_df
+            else:
+                current_state = start_candidates[0]
+                visited = set()
+                rows = []
+                while current_state in state_map and current_state not in visited:
+                    row = state_map[current_state]
+                    rows.append(row)
+                    visited.add(current_state)
+                    current_state = row["New State"]
+
+                sorted_group = pd.DataFrame(rows)
+
+                if len(sorted_group) < len(group_df):
+                    extras = group_df[~group_df.index.isin(sorted_group.index)]
+                    sorted_group = pd.concat([sorted_group, extras])
+
+            sorted_group["__sort_index__"] = range(len(sorted_group))
+            result.append(sorted_group)
+    final_df = pd.concat(result).copy()
+
+    # บางกลุ่มอาจไม่มี __sort_index__, ให้เติมค่าเริ่มต้น
+    if "__sort_index__" not in final_df.columns:
+        final_df["__sort_index__"] = 9999
+    else:
+        final_df["__sort_index__"] = final_df["__sort_index__"].fillna(9999)
+    final_df = final_df.sort_values(by=["Device", "Field change time", "__sort_index__"]).reset_index(drop=True)
+    return final_df.drop(columns=["__sort_index__"])
 
 def adjust_stateandtime(df, startdate, enddate):
     
@@ -193,7 +253,6 @@ def adjust_stateandtime(df, startdate, enddate):
     df["Next Change Time"] = df["Field change time"].shift(-1) # คำนวณเวลาสิ้นสุดของแต่ละสถานะ
     #st.write(df["Field change time"].iloc[123])
     #st.write(df["Next Change Time"].iloc[123])
-    st.write(df)
     # ✅ **เพิ่ม State เริ่มต้น ถ้าจำเป็น**
     first_change_time = df["Field change time"].iloc[0]
     if first_change_time > startdate:
@@ -239,7 +298,7 @@ def adjust_stateandtime(df, startdate, enddate):
     
     # กรองข้อมูลเฉพาะที่อยู่ในช่วงเวลาที่กำหนด
     df = df[(df["Adjusted Start"] >= startdate) & (df["Adjusted End"] <= enddate)]
-    st.write(df)
+
     # ใส่ค่า start_time และ end_time ในทุกแถว
     df["Start Time Filter"] = startdate
     df["End Time Filter"] = enddate
@@ -247,7 +306,7 @@ def adjust_stateandtime(df, startdate, enddate):
         lambda x: pd.Series(split_duration(x), index=["Days", "Hours", "Minutes", "Seconds"]))
     df["Formatted Duration"] = df.apply(format_duration, axis=1)
     #df["Month_stamp"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce').dt.strftime('%Y-%m')
-    df = df.sort_values("Field change time").reset_index(drop=True) # Sort data by time
+    #df = df.sort_values("Field change time").reset_index(drop=True) # Sort data by time
     return df
 
 # ✅ **แปลงวินาทีเป็นวัน ชั่วโมง นาที วินาที**
@@ -309,8 +368,8 @@ def calculate_device_availability(df_filtered):
     device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
 
-    st.dataframe(df_filtered[df_filtered["Device"] == 'RNA_S'])
-    st.dataframe(device_online_duration[device_online_duration["Device"] == 'RNA_S'])
+    st.dataframe(df_filtered)
+    st.dataframe(device_online_duration)
     # รวมข้อมูลทั้งสองตาราง
     device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
     # คำนวณ Availability (%)
@@ -587,7 +646,7 @@ def main():
 
                 # แปลงเป็นปี-เดือน
                 month_range = pd.date_range(min_date, max_date, freq='MS')
-                
+                month_options = month_range.strftime('%Y-%m').tolist()
                 #month_options = ['2025-01', '2025-02', '2025-03']
                 #st.write(month_options)
 
@@ -638,9 +697,13 @@ def main():
             """
         
         ###-----Calc-----###
-        df_event = df_event[df_event["Device"] == "RNA_S"]
-        df_split = split_state(df_event)
-        df_combined_sort = sort_state_chain(df_split)
+        Devices = ["1RWC01_S","1RWC02_S"]
+        df_event = df_event[df_event["Device"].isin(Devices)]
+        #df_event = df_event[df_event["Device"] == "1RWC01_S"]
+        
+        df_event_ = df_event.copy()
+        df_split = split_state(df_event_)
+        #df_combined_sort = sort_state_chain(df_split)
         #df_combined_sort["Field change time"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
@@ -648,23 +711,30 @@ def main():
         #adjusted_all_1 = []
         #for device_id in df_split["Device"].unique():
         #    df_device_1 = df_split[df_split["Device"] == device_id].copy()
-        #    df_adjusted_1 = sort_state_chain(df_device_1)
+        #    #df_adjusted_1 = sort_state_chain1(df_device_1)
+        #    df_adjusted_1  = sort_state_chain_by_time_exact_v2(df_device_1 )
+        #    #df_adjusted_1[["Field change time", "Previous State", "New State", "Device"]]
+
         #    adjusted_all_1.append(df_adjusted_1)
         #df_combined_sort = pd.concat(adjusted_all_1, ignore_index=True)
+
+        df_combined_sort = sort_state_chain_by_time_exact_multi(df_split)
+        #df_adjusted_1[["Field change time", "Previous State", "New State", "Device"]]
+        #st.write(df_adjusted_1)
         #df_combined_sort["Field change time"].dt.strftime('%Y-%m-%d %H:%M:%S.%f')
         #st.dataframe(df_combined_sort[df_combined_sort["Device"] == 'PBA_S'])
         #st.dataframe(df_combined_sort["Field change time"].dt.strftime('%Y-%m-%d %H:%M:%S.%f').unique())
-        #st.info("หลัง เพิ่ม state")
-        #st.dataframe(df_combined_sort)
-
+        st.info("sort_state")
+        st.dataframe(df_combined_sort)
+    
         adjusted_all_2 = []
         for device_id in df_combined_sort["Device"].unique():
             df_device = df_combined_sort[df_combined_sort["Device"] == device_id].copy()
             df_adjusted = adjust_stateandtime(df_device, start_date1, end_date1)
             adjusted_all_2.append(df_adjusted)
         df_combined = pd.concat(adjusted_all_2, ignore_index=True)
-        #st.info("df_combine")
-        #st.dataframe(df_combined)
+        st.info("adjust_stateandtime")
+        st.dataframe(df_combined)
 
         state_summary = calculate_state_summary(df_combined) #Avail แต่ละ state
         device_availability = calculate_device_availability(df_combined)
@@ -682,7 +752,7 @@ def main():
         df_merged_add['Availability Period'] = peroid_name
         df_final = df_merged_add.copy()
         #df_final = format_selected_columns(df_merged_add)
-        #st.dataframe(df_final)
+        st.dataframe(df_final)
 
         #df_ava_, peroid_name = add_peroid(df_merged_add, start_date1, end_date1)
         #st.dataframe(df_ava_)
