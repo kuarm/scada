@@ -298,7 +298,12 @@ def adjust_stateandtime(df, startdate, enddate):
     
     # กรองข้อมูลเฉพาะที่อยู่ในช่วงเวลาที่กำหนด
     df = df[(df["Adjusted Start"] >= startdate) & (df["Adjusted End"] <= enddate)]
+<<<<<<< Updated upstream
 
+=======
+    st.info("dddd")
+    st.write(df)
+>>>>>>> Stashed changes
     # ใส่ค่า start_time และ end_time ในทุกแถว
     df["Start Time Filter"] = startdate
     df["End Time Filter"] = enddate
@@ -697,6 +702,7 @@ def main():
             """
         
         ###-----Calc-----###
+<<<<<<< Updated upstream
         Devices = ["1RWC01_S","1RWC02_S"]
         df_event = df_event[df_event["Device"].isin(Devices)]
         #df_event = df_event[df_event["Device"] == "1RWC01_S"]
@@ -704,6 +710,11 @@ def main():
         df_event_ = df_event.copy()
         df_split = split_state(df_event_)
         #df_combined_sort = sort_state_chain(df_split)
+=======
+        df_event = df_event[df_event["Device"] == "RNA_S"]
+        df_split = split_state(df_event)
+        df_combined_sort = sort_state_chain1(df_split)
+>>>>>>> Stashed changes
         #df_combined_sort["Field change time"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
