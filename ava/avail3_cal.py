@@ -216,8 +216,10 @@ def sort_state_chain_by_exact_time(df):
 
         sorted_df = pd.DataFrame(ordered_rows)
         result.append(sorted_df)
-
-    return pd.concat(result).reset_index(drop=True)
+        df_result = pd.concat(result).reset_index(drop=True)
+        df_result = df_result.sort_values(by=["Device", "Field change time"]).reset_index(drop=True)
+    #st.dataframe(df_result)
+    return df_result
 
 
 
@@ -291,6 +293,7 @@ def adjust_stateandtime(df, startdate, enddate):
     df["Formatted Duration"] = df.apply(format_duration, axis=1)
     #df["Month_stamp"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce').dt.strftime('%Y-%m')
     #df = df.sort_values("Field change time").reset_index(drop=True) # Sort data by time
+
     return df
 
 # ✅ **แปลงวินาทีเป็นวัน ชั่วโมง นาที วินาที**
@@ -683,7 +686,7 @@ def main():
         ###-----Calc-----###
         Devices = ["1RWC01_S","1RWC02_S"]
         #df_event = df_event[df_event["Device"].isin(Devices)]
-        #df_event = df_event[df_event["Device"] == "1RWC01_S"]
+        #df_event = df_event[df_event["Device"] == "S1-RCS-0001"]
         
         df_event_ = df_event.copy()
         df_split = split_state(df_event_)
