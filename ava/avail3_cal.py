@@ -219,6 +219,7 @@ def sort_state_chain_by_exact_time(df):
         df_result = pd.concat(result).reset_index(drop=True)
         df_result = df_result.sort_values(by=["Device", "Field change time"]).reset_index(drop=True)
     #st.dataframe(df_result)
+        
     return df_result
 
 
@@ -355,8 +356,23 @@ def calculate_device_availability(df_filtered):
     device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
 
-    #st.dataframe(df_filtered)
-    #st.dataframe(device_online_duration)
+    st.dataframe(df_filtered)
+    st.dataframe(device_online_duration)
+
+    def to_excel(df):
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Sheet1')
+            processed_data = output.getvalue()
+            return processed_data
+        
+    excel_data = to_excel(df_filtered)
+    st.download_button(
+            label="📥 ดาวน์โหลดข้อมูลอุปกรณ์ทั้งหมด",
+            data=excel_data,
+            file_name="testtest.xlsx",
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
     # รวมข้อมูลทั้งสองตาราง
     device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
     # คำนวณ Availability (%)
@@ -687,6 +703,7 @@ def main():
         Devices = ["1RWC01_S","1RWC02_S"]
         #df_event = df_event[df_event["Device"].isin(Devices)]
         #df_event = df_event[df_event["Device"] == "S1-RCS-0001"]
+        df_event = df_event[df_event["Device"].str.startswith("S1-RCS", na=False)]
         
         df_event_ = df_event.copy()
         df_split = split_state(df_event_)
