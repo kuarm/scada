@@ -2,8 +2,10 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+from io import BytesIO
+from io import StringIO
 
-def show_month(df):
+def show_month(df,flag):
     df_pivot = df.copy()
 
     # แปลงคอลัมน์เดือน
@@ -14,8 +16,8 @@ def show_month(df):
                    'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
     df_pivot["Month_name"] = df_pivot["Month_num"].apply(lambda x: month_names[int(x) - 1] if pd.notnull(x) else "")
 
-    st.write("ค่าไม่ใช่ตัวเลข (จะถูกแปลงเป็น NaN):")
-    st.write(df_pivot[df_pivot["สั่งการสำเร็จ (%)"].isnull()])
+    #st.write("ค่าไม่ใช่ตัวเลข (จะถูกแปลงเป็น NaN):")
+    #st.write(df_pivot[df_pivot["สั่งการสำเร็จ (%)"].isnull()])
 
     # Pivot: row = Device, col = month, val = success %
     pivot_df = df_pivot.pivot_table(
@@ -25,15 +27,9 @@ def show_month(df):
         aggfunc="mean"
     )
 
-    st.write("Pivot แล้ว:")
-    st.dataframe(pivot_df)
+    #st.write("Pivot แล้ว:")
+    #st.dataframe(pivot_df)
 
-    st.write("ตรวจอุปกรณ์ที่ไม่มีข้อมูลทุกเดือน:")
-    st.write(pivot_df[pivot_df.drop(columns="Avg สั่งการสำเร็จ (%)").isnull().all(axis=1)])
-
-    # ตรวจอุปกรณ์ที่ไม่มีข้อมูลเลย
-    null_mask = pivot_df.drop(columns="Avg สั่งการสำเร็จ (%)").isnull().all(axis=1)
-    devices_all_null = pivot_df[null_mask].index.tolist()
 
     # เรียงเดือน
     pivot_df = pivot_df.reindex(columns=month_names)
@@ -44,19 +40,44 @@ def show_month(df):
     # คัดลอกเพื่อเช็คอุปกรณ์ที่ไม่มีข้อมูลเลย
     null_mask = pivot_df.drop(columns="Avg สั่งการสำเร็จ (%)").isnull().all(axis=1)
     devices_all_null = pivot_df[null_mask].index.tolist()
-    st.write(devices_all_null)
+    #st.info("check null")
+    #st.write(devices_all_null)
+
+    if devices_all_null:
+        st.warning(f"🔍 พบ {len(devices_all_null)} อุปกรณ์ที่ไม่มีข้อมูลเลยทั้งปี:")
+        st.write(devices_all_null)
+
+    pivot_df_numeric = pivot_df.copy()  # ก่อน format
+
     # จัดรูปแบบเปอร์เซ็นต์ (xx.xx%) ถ้าไม่ใช่ NaN
     def format_percent(val):
-        return f"{val:.2f}%" if pd.notnull(val) else ""
+        return f"{val:.2f}%" if pd.notnull(val) else "-"
 
     for col in month_names + ["Avg สั่งการสำเร็จ (%)"]:
         if col in pivot_df.columns:
             pivot_df[col] = pivot_df[col].apply(format_percent)
 
-    # Reset index
-    pivot_df = pivot_df.reset_index()
+    pivot_df_display = pivot_df.reset_index()
+    
+    st.info(f"✅ สรุป สั่งการสำเร็จ (%) แต่ละ {title} แยกตามเดือน")
+    st.dataframe(pivot_df_display, use_container_width=True)
 
-    return pivot_df, devices_all_null
+    def to_excel(df):
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Sheet1')
+            processed_data = output.getvalue()
+            return processed_data
+    excel_data = to_excel(pivot_df_display)
+    xlsx_filename = 'command_data' + '_' + flag + ".xlsx"
+    st.download_button(
+            label=f"📥 ดาวน์โหลดข้อมูลการสั่งการ {flag}",
+            data=excel_data,
+            file_name=xlsx_filename,
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+    
+    return pivot_df_display, devices_all_null, pivot_df_numeric
 
 # ---- Upload and Merge ----
 uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
@@ -101,47 +122,51 @@ if uploaded_files:
     #st.dataframe(df_combined)
 
     ### ✅
-    st.info(f"✅ สรุป สั่งการสำเร็จ (%) แต่ละ {title} แยกตามเดือน")
+    #st.info(f"✅ สรุป สั่งการสำเร็จ (%) แต่ละ {title} แยกตามเดือน")
     #pivot_df = pivot_df.style.format(format_dict)
-    pivot_df, devices_all_null = show_month(df_combined)
-    #st.dataframe(pivot_df)
-    #st.write(devices_all_null)
-
-        
-
-    device_options = pivot_df_["Device"].unique()
+    df_display, devices_all_null, df_numeric = show_month(df_combined,title)
+    
+    device_options = df_display["Device"].unique()
     selected_devices = st.multiselect("เลือก Device ที่ต้องการแสดง", device_options, default=device_options)
 
-    pivot_df_filtered = pivot_df[pivot_df["Device"].isin(selected_devices)]
+    pivot_df_filtered = df_display[df_display["Device"].isin(selected_devices)] #ตารางค่า %cmd แต่ละเดือน แยกตาม Device
 
     df_plot = pivot_df_filtered.melt(id_vars=["Device"], 
-                        value_vars=[col for col in pivot_df.columns if col not in ["Device", "Avg สั่งการสำเร็จ (%)"]],
+                        value_vars=[col for col in df_display.columns if col not in ["Device", "Avg สั่งการสำเร็จ (%)"]],
                         var_name="เดือน", 
                         value_name="สั่งการสำเร็จ (%)")
+    #
+    #st.dataframe(df_plot)
 
     # plot line chart
-    fig_line = px.line(df_plot, 
-                x="เดือน", 
-                y="สั่งการสำเร็จ (%)", 
-                color="Device", 
-                markers=True,
-                title="📈 สั่งการสำเร็จ (%) รายเดือนแยกตาม Device")
+    fig_line = px.line(
+        df_plot, 
+        x="เดือน", 
+        y="สั่งการสำเร็จ (%)", 
+        color="Device", 
+        markers=True,
+        title="📈 สั่งการสำเร็จ (%) รายเดือนแยกตาม Device")
 
     fig_line.update_layout(xaxis_title="เดือน", yaxis_title="สั่งการสำเร็จ (%)", yaxis=dict(range=[0, 105]))
-    
+    st.plotly_chart(fig_line, use_container_width=True)
 
-    fig_bar = px.bar(pivot_df_filtered, 
-              x="Device", 
-              y="Avg สั่งการสำเร็จ (%)", 
-              text="Avg สั่งการสำเร็จ (%)", 
-              title="📊 ค่าเฉลี่ยสั่งการสำเร็จ (%) ของแต่ละ Device")
+    fig_bar = px.bar(
+        df_numeric.reset_index(), 
+        x="Device",
+        y="Avg สั่งการสำเร็จ (%)", 
+        text="Avg สั่งการสำเร็จ (%)", 
+        title="📊 ค่าเฉลี่ยสั่งการสำเร็จ (% Avg) ของแต่ละ Device")
 
     fig_bar.update_traces(texttemplate="%{text:.2f}", textposition="outside")
-    fig_bar.update_layout(xaxis_tickangle=-45, yaxis_range=[0, 105], yaxis_title="Avg สั่งการสำเร็จ (%)")
-    
+    fig_bar.update_layout(xaxis_tickangle=-45, yaxis_range=[0, 120], yaxis_title="Avg สั่งการสำเร็จ (%)")
+    st.plotly_chart(fig_bar, use_container_width=True)
+
     # ✅ Scatter plot: แสดง Avg ของแต่ละ Device
+    df_numeric["Avg_Success_Text"] = df_numeric["Avg สั่งการสำเร็จ (%)"].apply(
+        lambda x: f"{x:.2f}" if pd.notnull(x) else ""
+        )
     fig3 = px.scatter(
-        pivot_df,
+        df_numeric.reset_index(),
         x="Device",
         y="Avg สั่งการสำเร็จ (%)",
         text="Avg สั่งการสำเร็จ (%)",
@@ -149,9 +174,14 @@ if uploaded_files:
         color_continuous_scale="Viridis",
         title="🔵 Scatter: ค่าเฉลี่ยสั่งการสำเร็จ (%) ของแต่ละ Device"
     )
-    fig3.update_traces(textposition="top center")
-    fig3.update_layout(xaxis_tickangle=-45, yaxis_range=[0, 105])
     
+    fig3.update_traces(texttemplate="%{text:.2f}", textposition="top center")
+    fig3.update_layout(
+        xaxis_tickangle=-45,
+        yaxis_range=[0, 120],
+        yaxis_title="Avg สั่งการสำเร็จ (%)"
+    )
+    st.plotly_chart(fig3, use_container_width=True)
 
     # แปลง wide → long เพื่อดู scatter รายเดือน
     df_scatter = pivot_df.melt(
@@ -205,9 +235,10 @@ if uploaded_files:
     "📊 Histogram (รายเดือน)"
 ])
 
-    """
+    
     with tab1:
-        st.plotly_chart(fig_line, use_container_width=True)
+        #st.plotly_chart(fig_line, use_container_width=True)
+        st.write("test")
 
     with tab2:
         st.plotly_chart(fig_bar, use_container_width=True)
@@ -264,5 +295,4 @@ if uploaded_files:
         with col4:
             st.subheader("📊 Bar Chart: ค่าเฉลี่ยแต่ละ Device")
             st.plotly_chart(fig_bar, use_container_width=True, key="bar_chart_tab2")
-"""
 

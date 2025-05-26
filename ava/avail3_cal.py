@@ -222,10 +222,6 @@ def sort_state_chain_by_exact_time(df):
         
     return df_result
 
-
-
-
-
 def adjust_stateandtime(df, startdate, enddate):
     
     # แปลงให้เป็น datetime ถ้ายังเป็น str อยู่
@@ -293,7 +289,7 @@ def adjust_stateandtime(df, startdate, enddate):
         lambda x: pd.Series(split_duration(x), index=["Days", "Hours", "Minutes", "Seconds"]))
     df["Formatted Duration"] = df.apply(format_duration, axis=1)
     #df["Month_stamp"] = pd.to_datetime(df["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce').dt.strftime('%Y-%m')
-    #df = df.sort_values("Field change time").reset_index(drop=True) # Sort data by time
+    df = df.sort_values("Field change time").reset_index(drop=True) # Sort data by time
 
     return df
 
@@ -356,9 +352,10 @@ def calculate_device_availability(df_filtered):
     device_online_duration = df_filtered[df_filtered["New State"] == normal_state].groupby("Device")["Adjusted Duration (seconds)"].sum().reset_index()
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
 
-    st.dataframe(df_filtered)
-    st.dataframe(device_online_duration)
+    #st.dataframe(df_filtered)
+    #st.dataframe(device_online_duration)
 
+    """ function DL
     def to_excel(df):
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -373,6 +370,7 @@ def calculate_device_availability(df_filtered):
             file_name="testtest.xlsx",
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
+    """
     # รวมข้อมูลทั้งสองตาราง
     device_availability = device_total_duration.merge(device_online_duration, on="Device", how="left").fillna(0)
     # คำนวณ Availability (%)
@@ -700,10 +698,10 @@ def main():
             """
         
         ###-----Calc-----###
-        Devices = ["1RWC01_S","1RWC02_S"]
+        #Devices = ["S1-RCS-0001","S1-RCS-0003"]
         #df_event = df_event[df_event["Device"].isin(Devices)]
-        #df_event = df_event[df_event["Device"] == "S1-RCS-0001"]
-        df_event = df_event[df_event["Device"].str.startswith("S1-RCS", na=False)]
+        #df_event = df_event[df_event["Device"] == "S1-RCS-0003"]
+        #df_event = df_event[df_event["Device"].str.startswith("S1-RCS", na=False)]
         
         df_event_ = df_event.copy()
         df_split = split_state(df_event_)
