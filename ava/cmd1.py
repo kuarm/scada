@@ -184,36 +184,76 @@ if uploaded_files:
     st.plotly_chart(fig3, use_container_width=True)
 
     # แปลง wide → long เพื่อดู scatter รายเดือน
-    df_scatter = pivot_df.melt(
+    df_scatter = pivot_df_filtered.melt(
         id_vars=["Device"], 
-        value_vars=[col for col in pivot_df.columns if col not in ["Device", "Avg สั่งการสำเร็จ (%)"]],
+        value_vars=[col for col in df_display.columns if col not in ["Device", "Avg สั่งการสำเร็จ (%)"]],
         var_name="เดือน", 
         value_name="สั่งการสำเร็จ (%)"
     )
-
-    fig3_month = px.scatter(
-        df_scatter,
-        x="Device",
-        y="สั่งการสำเร็จ (%)",
-        color="เดือน",
-        title="🔵 Scatter: สั่งการสำเร็จ (%) รายเดือนตาม Device"
-    )
-    fig3_month.update_layout(xaxis_tickangle=-45, yaxis_range=[0, 105])
+    color_map = {
+        "ม.ค.": "#1f77b4",
+        "ก.พ.": "#ff7f0e",
+        "มี.ค.": "#2ca02c",
+        "เม.ย.": "#d62728",
+        "พ.ค.": "#9467bd",
+        "มิ.ย.": "#8c564b",
+        "ก.ค.": "#e377c2",
+        "ส.ค.": "#7f7f7f",
+        "ก.ย.": "#bcbd22",
+        "ต.ค.": "#17becf",
+        "พ.ย.": "#aec7e8",
+        "ธ.ค.": "#ffbb78"
+        }
     
+    fig3_month = px.scatter(
+    df_scatter,
+    x="Device",
+    y="สั่งการสำเร็จ (%)",
+    color="เดือน",
+    color_discrete_map=color_map,
+    size=[10]*len(df_scatter),
+    size_max=12,
+    title="🔵 Scatter: สั่งการสำเร็จ (%) รายเดือนตาม Device"
+)
+    fig3_month.update_layout(xaxis_tickangle=-45, yaxis_range=[0, 105])
+    fig3_month.update_traces(marker=dict(size=12, symbol="circle", line=dict(width=1, color="DarkSlateGrey")))
+    st.plotly_chart(fig3_month, use_container_width=True)
 
-    # Histogram จากค่าเฉลี่ยของแต่ละ Device
+    # melt ก่อน
+    df_hist = df_numeric.copy()
+    #df_hist["สั่งการสำเร็จ (%)"] = df_hist["สั่งการสำเร็จ (%)"].replace({",": "", "%": ""}, regex=True)
+    #df_hist["สั่งการสำเร็จ (%)"] = pd.to_numeric(df_hist["สั่งการสำเร็จ (%)"], errors="coerce")
+
+    df_hist["Avg สั่งการสำเร็จ (%)"].dtype
+    st.write(df_hist.head())
     fig4 = px.histogram(
-        pivot_df,
+        df_hist,
         x="Avg สั่งการสำเร็จ (%)",
-        nbins=10,
+        #color="เดือน",         # หรือไม่ใช้ก็ได้
+        barmode="group",        # หรือ "overlay"
         title="📊 Histogram: ความถี่ของค่าเฉลี่ยสั่งการสำเร็จ (%)",
         color_discrete_sequence=["#0072B2"]
     )
-    fig4.update_layout(xaxis_title="Avg สั่งการสำเร็จ (%)", yaxis_title="จำนวน Device")
+    # กำหนดช่วงแกน X ทีละ 10 หน่วย
+    fig4.update_traces(
+        xbins=dict(
+            start=0,      # เริ่มที่ 0
+            end=100,      # จบที่ 100
+            size=10       # ความกว้างของแต่ละ bin
+        )
+    )
+    fig4.update_layout(
+        xaxis_title="Avg สั่งการสำเร็จ (%)",
+        yaxis_title="จำนวน Device",
+        xaxis=dict(
+            tickmode="linear",
+            tick0=0,
+            dtick=10  # ให้แสดง label ทุก ๆ 10 หน่วย
+        )
+    )
     
-
-    # melt ก่อน
-    df_hist = df_scatter.copy()
+    st.plotly_chart(fig4, use_container_width=True)
+    ###--------------------------------------------###
 
     fig4_month = px.histogram(
         df_hist,
@@ -221,10 +261,43 @@ if uploaded_files:
         color="เดือน",
         nbins=10,
         barmode="overlay",  # หรือ "group"
+        color_discrete_map=color_map,
+        text_auto=True,     # 👈 แสดงตัวเลขบนแท่ง
+        histfunc="count",   # 👈 นับจำนวนรายการ (ค่าปริยาย)
         title="📊 Histogram: สั่งการสำเร็จ (%) แยกตามเดือน"
-    )
-    fig4_month.update_layout(xaxis_title="สั่งการสำเร็จ (%)", yaxis_title="จำนวน")
+    ) 
+
+    fig4_month.update_traces(xbins=dict(start=0, end=100, size=10))
+
+    fig4_month.update_layout(
+        xaxis_title="สั่งการสำเร็จ (%)",
+        yaxis_title=f"จำนวน {title}",
+        xaxis=dict(tickmode="linear", tick0=0, dtick=10),
+        bargap=0.1,  # ปรับช่องว่างระหว่างแท่ง
+        barmode='overlay'
+        )
     
+    st.plotly_chart(fig4_month, use_container_width=True)
+
+    fig_group = px.histogram(
+        df_hist,
+        x="สั่งการสำเร็จ (%)",
+        color="เดือน",
+        #nbins=10,
+        barmode="group",             # ⬅ แยกแท่งตามเดือน
+        color_discrete_map=color_map,
+        text_auto=True,
+        histfunc="count",
+        title="📊 Histogram (Grouped): สั่งการสำเร็จ (%) แยกตามเดือน"
+        )
+
+    fig_group.update_layout(
+        xaxis_range=[0, 100],
+        xaxis_title="สั่งการสำเร็จ (%)",
+        yaxis_title="จำนวน",
+        bargap=0.1
+        )
+    st.plotly_chart(fig_group, use_container_width=True)
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📈 Line Chart", 
@@ -241,39 +314,43 @@ if uploaded_files:
         st.write("test")
 
     with tab2:
-        st.plotly_chart(fig_bar, use_container_width=True)
+        #st.plotly_chart(fig_bar, use_container_width=True)
+        st.write("test")
 
     with tab3:
-        st.plotly_chart(fig3, use_container_width=True)
+        #st.plotly_chart(fig3, use_container_width=True)
+        st.write("test")
 
     with tab4:
-        st.plotly_chart(fig3_month, use_container_width=True)
+        #st.plotly_chart(fig3_month, use_container_width=True)
+        st.write("test")
 
     with tab5:
-        st.plotly_chart(fig4, use_container_width=True)
+        #st.plotly_chart(fig4, use_container_width=True)
+        st.write("test")
 
     with tab6:
-        st.plotly_chart(fig4_month, use_container_width=True)
-
+        #st.plotly_chart(fig4_month, use_container_width=True)
+        st.write("test")
     col1, col2 = st.columns(2)
 
     with col1:
         st.subheader("📈 Line Chart")
-        st.plotly_chart(fig_line, use_container_width=True, key="line_chart")
+        #st.plotly_chart(fig_line, use_container_width=True, key="line_chart")
 
     with col2:
         st.subheader("🔵 Scatter (Avg)")
-        st.plotly_chart(fig3, use_container_width=True, key="scatter_avg")
+        #st.plotly_chart(fig3, use_container_width=True, key="scatter_avg")
 
     col3, col4 = st.columns(2)
 
     with col3:
         st.subheader("📊 Histogram (Avg)")
-        st.plotly_chart(fig4, use_container_width=True, key="histogram_avg")
+        #st.plotly_chart(fig4, use_container_width=True, key="histogram_avg")
 
     with col4:
         st.subheader("📊 Histogram (รายเดือน)")
-        st.plotly_chart(fig4_month, use_container_width=True, key="histogram_month")
+        #st.plotly_chart(fig4_month, use_container_width=True, key="histogram_month")
     
     # Tabs แยกประเภทกราฟ
     tab1, tab2 = st.tabs(["📊 กราฟรวม", "🧪 เปรียบเทียบ"])
