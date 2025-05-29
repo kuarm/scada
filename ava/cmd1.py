@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from io import BytesIO
 from io import StringIO
+import numpy as np
 
 def show_month(df,flag):
     df_pivot = df.copy()
@@ -223,9 +224,7 @@ if uploaded_files:
     df_hist = df_numeric.copy()
     #df_hist["สั่งการสำเร็จ (%)"] = df_hist["สั่งการสำเร็จ (%)"].replace({",": "", "%": ""}, regex=True)
     #df_hist["สั่งการสำเร็จ (%)"] = pd.to_numeric(df_hist["สั่งการสำเร็จ (%)"], errors="coerce")
-
-    df_hist["Avg สั่งการสำเร็จ (%)"].dtype
-    st.write(df_hist.head())
+    
     fig4 = px.histogram(
         df_hist,
         x="Avg สั่งการสำเร็จ (%)",
@@ -240,7 +239,8 @@ if uploaded_files:
             start=0,      # เริ่มที่ 0
             end=100,      # จบที่ 100
             size=10       # ความกว้างของแต่ละ bin
-        )
+        ),
+        texttemplate="%{y}", textposition="outside"
     )
     fig4.update_layout(
         xaxis_title="Avg สั่งการสำเร็จ (%)",
@@ -251,33 +251,56 @@ if uploaded_files:
             dtick=10  # ให้แสดง label ทุก ๆ 10 หน่วย
         )
     )
-    
+
     st.plotly_chart(fig4, use_container_width=True)
+
     ###--------------------------------------------###
+    # เตรียม DataFrame แบบ melt
+    df_melt = df_display.melt(
+        id_vars=["Device"],
+        value_vars=[col for col in df_display.columns if col not in ["Device", "Avg สั่งการสำเร็จ (%)", "Avg_Success_Text"]],
+        var_name="เดือน",
+        value_name="สั่งการสำเร็จ (%)"
+    )
+    
+    # แปลงค่าว่าง/None เป็น NaN และแปลงเป็น float
+    df_melt["สั่งการสำเร็จ (%)"] = (df_melt["สั่งการสำเร็จ (%)"].replace("None", np.nan).replace({",": "", "%": ""}, regex=True))
+    df_melt["สั่งการสำเร็จ (%)"] = pd.to_numeric(df_melt["สั่งการสำเร็จ (%)"], errors="coerce")
+    
+    # กรองค่าที่เป็น NaN และไม่เอาค่า 0
+    df_melt_filtered = df_melt[
+        (df_melt["สั่งการสำเร็จ (%)"].notnull()) & 
+        (df_melt["สั่งการสำเร็จ (%)"] > 0)
+    ]
 
     fig4_month = px.histogram(
-        df_hist,
+        df_melt,
         x="สั่งการสำเร็จ (%)",
         color="เดือน",
         nbins=10,
-        barmode="overlay",  # หรือ "group"
+        barmode="overlay", #"overlay",  # หรือ "group"
         color_discrete_map=color_map,
-        text_auto=True,     # 👈 แสดงตัวเลขบนแท่ง
-        histfunc="count",   # 👈 นับจำนวนรายการ (ค่าปริยาย)
+        #text_auto=True,     # 👈 แสดงตัวเลขบนแท่ง
+        #histfunc="count",   # 👈 นับจำนวนรายการ (ค่าปริยาย)
         title="📊 Histogram: สั่งการสำเร็จ (%) แยกตามเดือน"
     ) 
 
-    fig4_month.update_traces(xbins=dict(start=0, end=100, size=10))
+    fig4_month.update_traces(
+        xbins=dict(start=10, end=100, size=10),
+        texttemplate="%{y}", textposition="outside"
+        )
 
     fig4_month.update_layout(
-        xaxis_title="สั่งการสำเร็จ (%)",
+        xaxis_title="Avg สั่งการสำเร็จ (%)",
         yaxis_title=f"จำนวน {title}",
         xaxis=dict(tickmode="linear", tick0=0, dtick=10),
-        bargap=0.1,  # ปรับช่องว่างระหว่างแท่ง
-        barmode='overlay'
+        #bargap=0.1,  # ปรับช่องว่างระหว่างแท่ง
+        #barmode='overlay'
         )
-    
+    st.info("info")
     st.plotly_chart(fig4_month, use_container_width=True)
+
+    ###--------------------------------------------###
 
     fig_group = px.histogram(
         df_hist,
