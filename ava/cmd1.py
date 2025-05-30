@@ -15,11 +15,11 @@ def group(df):
 
     # คำนวณเปอร์เซ็นต์
     df_summary["% การสั่งการสำเร็จ"] = (df_summary["สั่งการสำเร็จ"] / df_summary["สั่งการทั้งหมด"]) * 100
-
+    
     # จัดอันดับ
     df_summary["อันดับสั่งการทั้งหมด"] = df_summary["สั่งการทั้งหมด"].rank(ascending=False, method='min')
     df_summary["อันดับ % สำเร็จ"] = df_summary["% การสั่งการสำเร็จ"].rank(ascending=False, method='min')
-
+    
     # จัดรูปแบบตัวเลข
     df_summary["สั่งการทั้งหมด"] = df_summary["สั่งการทั้งหมด"].astype(int)
     df_summary["สั่งการสำเร็จ"] = df_summary["สั่งการสำเร็จ"].astype(int)
@@ -36,6 +36,18 @@ def group(df):
     st.markdown("### ✅ จัดอันดับตาม % การสั่งการสำเร็จ")
     df_sorted_success = df_summary.sort_values(by="% การสั่งการสำเร็จ", ascending=False)
     st.dataframe(df_sorted_success, use_container_width=True)
+
+    # Top 10 by total
+    top10_total = df_sorted_total.head(10)
+    fig_top_total = px.bar(top10_total, x="Device", y="สั่งการทั้งหมด", text="สั่งการทั้งหมด",
+                        title="🏅 Top 10 อุปกรณ์ที่มีการสั่งการมากที่สุด")
+    st.plotly_chart(fig_top_total, use_container_width=True)
+
+    # Top 10 by % success
+    top10_success = df_sorted_success.head(10)
+    fig_top_success = px.bar(top10_success, x="Device", y="% การสั่งการสำเร็จ", text="% การสั่งการสำเร็จ",
+                            title="🏅 Top 10 อุปกรณ์ที่สั่งการสำเร็จสูงสุด (%)")
+    st.plotly_chart(fig_top_success, use_container_width=True)
 
 def show_month(df,flag):
     df_pivot = df.copy()
@@ -136,6 +148,8 @@ if uploaded_files:
 
     df_combined = pd.concat(all_data, ignore_index=True)
 
+    group(df_combined)
+    
     format_dict = {
         "สั่งการทั้งหมด": "{:,.0f}",       # จำนวนเต็ม มี comma
         "สั่งการสำเร็จ": "{:,.0f}",        # จำนวนเต็ม มี comma
@@ -332,11 +346,11 @@ if uploaded_files:
     st.plotly_chart(fig4_month, use_container_width=True)
 
     ###--------------------------------------------###
-
+    st.write(df_hist)
     fig_group = px.histogram(
         df_hist,
-        x="สั่งการสำเร็จ (%)",
-        color="เดือน",
+        x="Avg สั่งการสำเร็จ (%)",
+        #color="เดือน",
         #nbins=10,
         barmode="group",             # ⬅ แยกแท่งตามเดือน
         color_discrete_map=color_map,
@@ -428,4 +442,4 @@ if uploaded_files:
             st.plotly_chart(fig_bar, use_container_width=True, key="bar_chart_tab2")
 
 
-    group(df_combined)
+    
