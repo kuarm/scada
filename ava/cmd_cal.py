@@ -173,7 +173,7 @@ def scatterplot(df_num,df_dis,flag,countMonth):
     text="สั่งการสำเร็จ (%)",  # ✅ เพิ่มเพื่อให้แสดงข้อความ
     title=f"🔵 Scatter : % สั่งการสำเร็จรายเดือน ของแต่ละ {flag}"
 )
-    fig3_month.update_layout(xaxis_tickangle=-45, yaxis_range=[0, 105], xaxis_title=flag)
+    fig3_month.update_layout(xaxis_tickangle=-45, yaxis_range=[0, 120], xaxis_title=flag)
     fig3_month.update_traces(
     marker=dict(size=12, symbol="circle", line=dict(width=1, color="DarkSlateGrey")),
     texttemplate="%{text:.2f}",  # ✅ กำหนดรูปแบบแสดงค่า
@@ -185,11 +185,13 @@ def scatterplot(df_num,df_dis,flag,countMonth):
 
 def histogram(df_num,df_dis,flag,countMonth):
     # กำหนดช่วง bin เอง เช่น 0-10, 10-20, ..., 90-100
-    bins = list(range(0, 110, 10))  # [0, 10, 20, ..., 100]
-    labels = [f"{i}-{i+10}%" for i in bins[:-1]]  # ['0-10%', '10-20%', ..., '90-100%']
-    st.write(labels)
+    bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    labels = [f"{i}-{i+10}%" for i in bins[:-1]]
+    #bins = list(range(0, 110, 10))  # [0, 10, ..., 100]
+
     # ✅ แปลงค่าทั้งหมดที่เป็น '%' เป็น float
     df_display_clean = df_dis.copy()
+
     month_cols = [col for col in df_dis.columns if col not in ["Device", "Avg สั่งการสำเร็จ (%)"]]
 
     for col in month_cols:
@@ -200,44 +202,82 @@ def histogram(df_num,df_dis,flag,countMonth):
         )
         df_display_clean[col] = pd.to_numeric(df_display_clean[col], errors="coerce")
 
+    
     df_melt = df_display_clean.melt(
         id_vars=["Device"],
         value_vars=month_cols,
         var_name="เดือน",
         value_name="สั่งการสำเร็จ (%)"
     )
-
+    
     #df_melt = df_melt.dropna(subset=["สั่งการสำเร็จ (%)"])
-
-
+    
     # เตรียม DataFrame แบบ melt
     #df_melt = df_dis.melt(
     #    id_vars=["Device"],
     # value_vars=[col for col in df_dis.columns if col not in ["Device", "Avg สั่งการสำเร็จ (%)", "Avg_Success_Text"]],
     # var_name="เดือน",value_name="สั่งการสำเร็จ (%)")
     
+    # 2. สร้าง df ที่มีทุกช่วง (เพื่อให้ plotly แสดงทุก bin แม้ไม่มีข้อมูล)
+    dummy_bins = pd.DataFrame({
+        "ช่วง % สั่งการ": labels,
+        "จำนวน": [0]*len(labels),
+        "เดือน": ["dummy"]*len(labels)
+    })
+
     # แปลงค่าว่าง/None เป็น NaN และแปลงเป็น float
     df_melt["สั่งการสำเร็จ (%)"] = (df_melt["สั่งการสำเร็จ (%)"].replace("None", np.nan).replace({",": "", "%": ""}, regex=True))
     df_melt["สั่งการสำเร็จ (%)"] = pd.to_numeric(df_melt["สั่งการสำเร็จ (%)"], errors="coerce")
     
-    # สร้างคอลัมน์ bin ใหม่
-    df_melt["ช่วง % สำเร็จ"] = pd.cut(df_melt["สั่งการสำเร็จ (%)"], bins=bins, labels=labels, include_lowest=True, right=False)
+    # สร้าง column ช่วงการสั่งการ
+    df_melt["ช่วง % สั่งการ"] = pd.cut(
+        df_melt["สั่งการสำเร็จ (%)"], 
+        bins=bins, 
+        labels=labels, 
+        include_lowest=True,
+        right=False
+        )
 
-    st.write(df_melt["ช่วง % สำเร็จ"])
+    # ลบ NaN
+    df_clean = df_melt.dropna(subset=["ช่วง % สั่งการ", "เดือน"])
+
+    # 4. นับจำนวนจริง
+    df_hist = df_clean.groupby(["ช่วง % สั่งการ", "เดือน"]).size().reset_index(name="จำนวน")
+
+    # 5. รวม dummy เข้ากับข้อมูลจริง (ใช้ concat)
+    df_combined = pd.concat([df_hist, dummy_bins], ignore_index=True)
     # กรองค่าที่เป็น NaN และไม่เอาค่า 0
     #df_melt_filtered = df_melt[
     #    (df_melt["สั่งการสำเร็จ (%)"].notnull()) & 
     #    (df_melt["สั่งการสำเร็จ (%)"] > 0)
     #]
-    # 1. กรองเฉพาะแถวที่มีค่าตัวเลขจริงใน "สั่งการสำเร็จ (%)"
-    df_scatter_clean = df_melt[pd.to_numeric(df_melt["สั่งการสำเร็จ (%)"], errors="coerce").notna()]
 
-    # 2. ดึงชื่อเดือนที่มีข้อมูลจริง
-    used_months = df_scatter_clean["เดือน"].unique()
+    # 6. ตรวจสอบ color map สำหรับเดือนจริง
+    months_with_data = df_clean["เดือน"].unique()
+    filtered_color_map = {m: color_map[m] for m in months_with_data if m in color_map}
+    
+    # 7. Plot
+    fig = px.bar(
+        df_combined[df_combined["เดือน"] != "dummy"],  # ตัด dummy ออกจากกราฟจริง
+        x="ช่วง % สั่งการ",
+        y="จำนวน",
+        color="เดือน",
+        category_orders={"ช่วง % สั่งการ": labels},
+        color_discrete_map=filtered_color_map,
+        barmode="overlay",
+        title=f"📊 Histogram: จำนวน {flag} แต่ละช่วง % สั่งการสำเร็จเฉลี่ย {countMonth} เดือน"
+    )
 
-    # 3. สร้าง color_map เฉพาะเดือนที่มีข้อมูล
-    filtered_color_map = {month: color_map[month] for month in used_months if month in color_map}
+    fig.update_layout(
+        xaxis_title="ช่วง % สั่งการสำเร็จ",
+        yaxis_title=f"จำนวน {flag}",
+        bargap=0.0
+    )
 
+    fig.update_traces(texttemplate="%{y}", textposition="outside")
+
+    st.plotly_chart(fig, use_container_width=True)
+    
     fig4_month = px.histogram(
         df_melt,
         x="สั่งการสำเร็จ (%)",
@@ -251,7 +291,7 @@ def histogram(df_num,df_dis,flag,countMonth):
     ) 
 
     fig4_month.update_traces(
-        xbins=dict(start=10, end=100, size=10),
+        xbins=dict(start=0, end=100, size=10),
         texttemplate="%{y}", textposition="outside"
         )
 
@@ -263,7 +303,7 @@ def histogram(df_num,df_dis,flag,countMonth):
         #bargap=0.1,  # ปรับช่องว่างระหว่างแท่ง
         #barmode='overlay'
         )
-    
+
     st.plotly_chart(fig4_month, use_container_width=True)
 
 # ---- Upload and Merge ----
