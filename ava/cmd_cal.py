@@ -44,7 +44,7 @@ def pivot(df,flag):
 
     # ค่าเฉลี่ย (ยังเป็น float ตอนนี้)
     pivot_df["Avg สั่งการสำเร็จ (%)"] = pivot_df.mean(axis=1, skipna=True)
-
+    
     # คัดลอกเพื่อเช็คอุปกรณ์ที่ไม่มีข้อมูลเลย
     null_mask = pivot_df.drop(columns="Avg สั่งการสำเร็จ (%)").isnull().all(axis=1)
     devices_all_null = pivot_df[null_mask].index.tolist()
@@ -54,7 +54,7 @@ def pivot(df,flag):
         st.write(devices_all_null)
     
     pivot_df_numeric = pivot_df.copy()  # ก่อน format
-    st.write(pivot_df_numeric.columns)
+
     # จัดรูปแบบเปอร์เซ็นต์ (xx.xx%) ถ้าไม่ใช่ NaN
     def format_percent(val):
         return f"{val:.2f}%" if pd.notnull(val) else "-"
@@ -86,6 +86,30 @@ def pivot(df,flag):
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
     
+    # ✅ ตรวจสอบ Device ที่ไม่มีข้อมูลเลยในแต่ละเดือน
+    missing_by_month = {}
+    for month in month_names:
+        if month in pivot_df.columns:
+            missing_devices = pivot_df[pd.isna(pivot_df[month])].index.tolist()
+            if missing_devices:
+                missing_by_month[month] = missing_devices
+
+    # ✅ แสดงผลลัพธ์
+    if missing_by_month:
+        with st.expander("📌 รายการ Device ที่ไม่มีข้อมูลสั่งการในแต่ละเดือน"):
+            for month, devices in missing_by_month.items():
+                st.markdown(f"**{month}**: พบ {len(devices)} อุปกรณ์")
+                st.write(devices)
+
+    # แปลง dict เป็น DataFrame
+    missing_df = pd.DataFrame([
+        {"Month": month, "Device": device}
+        for month, devices in missing_by_month.items()
+        for device in devices
+    ])
+
+    st.subheader("📋 ตาราง Device ที่ไม่มีการสั่งการในแต่ละเดือน")
+    st.dataframe(missing_df)
     return pivot_df_display, devices_all_null, pivot_df_numeric
 
 def lineplot(df):
@@ -93,7 +117,6 @@ def lineplot(df):
                       value_vars=[col for col in df_display.columns if col not in ["Device", "Avg สั่งการสำเร็จ (%)"]],
                       var_name="เดือน", 
                       value_name="สั่งการสำเร็จ (%)")
-    st.dataframe(df_plot)
 
     # plot line chart
     fig_line = px.line(
@@ -131,7 +154,7 @@ def scatterplot(df_num,df_dis,flag,countMonth):
         color="Avg สั่งการสำเร็จ (%)",
         color_continuous_scale="Viridis",
         title=f"🔵 Scatter : % สั่งการสำเร็จเฉลี่ย {countMonth} เดือน ของแต่ละ {flag}"
-    )
+        )
     
     fig3.update_traces(texttemplate="%{text:.2f}", textposition="top center")
     fig3.update_layout(
@@ -139,7 +162,7 @@ def scatterplot(df_num,df_dis,flag,countMonth):
         xaxis_title=flag,
         yaxis_range=[0, 120],
         yaxis_title="Avg สั่งการสำเร็จ (%)"
-    )
+        )
     st.plotly_chart(fig3, use_container_width=True)
 
     # ✅ แปลงค่าทั้งหมดที่เป็น '%' เป็น float
@@ -163,23 +186,23 @@ def scatterplot(df_num,df_dis,flag,countMonth):
     df_scatter = df_scatter.dropna(subset=["สั่งการสำเร็จ (%)"])
     
     fig3_month = px.scatter(
-    df_scatter,
-    x="Device",
-    y="สั่งการสำเร็จ (%)",
-    color="เดือน",
-    color_discrete_map=color_map,
-    size=[10]*len(df_scatter),
-    size_max=12,
-    text="สั่งการสำเร็จ (%)",  # ✅ เพิ่มเพื่อให้แสดงข้อความ
-    title=f"🔵 Scatter : % สั่งการสำเร็จรายเดือน ของแต่ละ {flag}"
-)
+        df_scatter,
+        x="Device",
+        y="สั่งการสำเร็จ (%)",
+        color="เดือน",
+        color_discrete_map=color_map,
+        size=[10]*len(df_scatter),
+        size_max=12,
+        text="สั่งการสำเร็จ (%)",  # ✅ เพิ่มเพื่อให้แสดงข้อความ
+        title=f"🔵 Scatter : % สั่งการสำเร็จรายเดือน ของแต่ละ {flag}"
+        )
     fig3_month.update_layout(xaxis_tickangle=-45, yaxis_range=[0, 120], xaxis_title=flag)
     fig3_month.update_traces(
-    marker=dict(size=12, symbol="circle", line=dict(width=1, color="DarkSlateGrey")),
-    texttemplate="%{text:.2f}",  # ✅ กำหนดรูปแบบแสดงค่า
-    textposition="top center",     # ✅ ตำแหน่งข้อความ
-    textfont_size=10,
-    )
+        marker=dict(size=12, symbol="circle", line=dict(width=1, color="DarkSlateGrey")),
+        texttemplate="%{text:.2f}",  # ✅ กำหนดรูปแบบแสดงค่า
+        textposition="top center",     # ✅ ตำแหน่งข้อความ
+        textfont_size=10,
+        )
 
     st.plotly_chart(fig3_month, use_container_width=True)
 
@@ -202,7 +225,6 @@ def histogram(df_num,df_dis,flag,countMonth):
         )
         df_display_clean[col] = pd.to_numeric(df_display_clean[col], errors="coerce")
 
-    
     df_melt = df_display_clean.melt(
         id_vars=["Device"],
         value_vars=month_cols,
@@ -264,9 +286,9 @@ def histogram(df_num,df_dis,flag,countMonth):
         color="เดือน",
         category_orders={"ช่วง % สั่งการ": labels},
         color_discrete_map=filtered_color_map,
-        barmode="overlay",
+        barmode="group",
         title=f"📊 Histogram: จำนวน {flag} แต่ละช่วง % สั่งการสำเร็จเฉลี่ย {countMonth} เดือน"
-    )
+        )
 
     fig.update_layout(
         xaxis_title="ช่วง % สั่งการสำเร็จ",
@@ -288,7 +310,7 @@ def histogram(df_num,df_dis,flag,countMonth):
         #text_auto=True,     # 👈 แสดงตัวเลขบนแท่ง
         #histfunc="count",   # 👈 นับจำนวนรายการ (ค่าปริยาย)
         title=f"📊 Histogram : จำนวน {flag} แต่ละช่วง % สั่งการสำเร็จเฉลี่ย {countMonth} เดือน"
-    ) 
+        ) 
 
     fig4_month.update_traces(
         xbins=dict(start=0, end=100, size=10),
@@ -325,9 +347,42 @@ if uploaded_files:
         df["สั่งการสำเร็จ (%)"] = pd.to_numeric(df["สั่งการสำเร็จ (%)"], errors="coerce")
         
         all_data.append(df)
+     # รวมข้อมูลทั้งหมดจากหลายไฟล์
+    df_merged = pd.concat(all_data, ignore_index=True)
+    #df_combined = pd.concat(all_data, ignore_index=True)
+    st.success(f"✅ รวมข้อมูลจาก {len(uploaded_files)} ไฟล์ สำเร็จแล้ว!")
 
-    df_combined = pd.concat(all_data, ignore_index=True)
-    countMonth = len(df_combined["Availability Period"].unique())
+    # ---- Select Flag (ระดับการแสดงผล: Zone/Province/Feeder) ----
+    flag = st.selectbox("🔍 เลือกระดับการวิเคราะห์", ["อุปกรณ์ FRTU", "สถานีไฟฟ้า"])
+
+    #if flag not in df_merged.columns:
+    #    st.error(f"❌ ไม่พบคอลัมน์ '{flag}' ในข้อมูล กรุณาตรวจสอบว่าไฟล์มีคอลัมน์นี้")
+    #    st.stop()
+
+    # ---- เรียกฟังก์ชัน Pivot เพื่อแสดงตาราง ----
+    title = flag  # เก็บไว้ใช้ในชื่อกราฟ
+    df_display, devices_all_null, df_numeric = pivot(df_merged, flag)
+
+    # ---- นับจำนวนเดือนที่มีการแสดงผล ----
+    countMonth = df_numeric.drop(columns=["Avg สั่งการสำเร็จ (%)"]).count(axis=1).max()
+    #countMonth = len(df_combined["Availability Period"].unique())
+
+    # ---- เรียกฟังก์ชัน Visualization ----
+    with st.expander("📈 Line Chart", expanded=True):
+        #lineplot(df_display)
+        st.info('test')
+    with st.expander("📊 Bar Chart", expanded=True):
+        #barplot(df_numeric, flag, countMonth)
+        st.info('test')
+    with st.expander("🔵 Scatter Plot", expanded=True):
+        #scatterplot(df_numeric, df_display, flag, countMonth)
+        st.info('test')
+    with st.expander("📊 Histogram", expanded=True):
+        #histogram(df_numeric, df_display, flag, countMonth)
+        st.info('test')
+
+
+    """   
     format_dict = {
         "สั่งการทั้งหมด": "{:,.0f}",       # จำนวนเต็ม มี comma
         "สั่งการสำเร็จ": "{:,.0f}",        # จำนวนเต็ม มี comma
@@ -342,9 +397,10 @@ if uploaded_files:
         title = 'อุปกรณ์ FRTU'
     else:
         title = 'สถานีไฟฟ้า'
+    
 
-    df_display, devices_all_null, df_numeric = pivot(df_combined,title)
-    #lineplot(df_display)
+    lineplot(df_display)
     barplot(df_numeric,title,countMonth)
     scatterplot(df_numeric,df_display,title,countMonth)
     histogram(df_numeric,df_display,title,countMonth)
+    """
