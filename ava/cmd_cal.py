@@ -328,6 +328,49 @@ def histogram(df_num,df_dis,flag,countMonth):
 
     st.plotly_chart(fig4_month, use_container_width=True)
 
+def rank(df):
+    # รวมข้อมูลตาม Device
+    df_summary = df.groupby("Device").agg({
+        "สั่งการทั้งหมด": "sum",
+        "สั่งการสำเร็จ": "sum"
+    }).reset_index()
+
+    # คำนวณเปอร์เซ็นต์
+    df_summary["% การสั่งการสำเร็จ"] = (df_summary["สั่งการสำเร็จ"] / df_summary["สั่งการทั้งหมด"]) * 100
+    
+    # จัดอันดับ
+    df_summary["อันดับสั่งการทั้งหมด"] = df_summary["สั่งการทั้งหมด"].rank(ascending=False, method='min')
+    df_summary["อันดับ % สำเร็จ"] = df_summary["% การสั่งการสำเร็จ"].rank(ascending=False, method='min')
+    
+    # จัดรูปแบบตัวเลข
+    df_summary["สั่งการทั้งหมด"] = df_summary["สั่งการทั้งหมด"].astype(int)
+    df_summary["สั่งการสำเร็จ"] = df_summary["สั่งการสำเร็จ"].astype(int)
+    df_summary["% การสั่งการสำเร็จ"] = df_summary["% การสั่งการสำเร็จ"].round(2)
+
+    st.markdown("## 🏆 จัดอันดับอุปกรณ์ตามการสั่งการ")
+
+    # ตารางเรียงตามสั่งการทั้งหมด
+    st.markdown("### 🔢 จัดอันดับตามจำนวนสั่งการทั้งหมด")
+    df_sorted_total = df_summary.sort_values(by="สั่งการทั้งหมด", ascending=False)
+    st.dataframe(df_sorted_total, use_container_width=True)
+
+    # ตารางเรียงตาม % สำเร็จ
+    st.markdown("### ✅ จัดอันดับตาม % การสั่งการสำเร็จ")
+    df_sorted_success = df_summary.sort_values(by="% การสั่งการสำเร็จ", ascending=False)
+    st.dataframe(df_sorted_success, use_container_width=True)
+
+    # Top 10 by total
+    top10_total = df_sorted_total.head(10)
+    fig_top_total = px.bar(top10_total, x="Device", y="สั่งการทั้งหมด", text="สั่งการทั้งหมด",
+                        title="🏅 Top 10 อุปกรณ์ที่มีการสั่งการมากที่สุด")
+    st.plotly_chart(fig_top_total, use_container_width=True)
+
+    # Top 10 by % success
+    top10_success = df_sorted_success.head(10)
+    fig_top_success = px.bar(top10_success, x="Device", y="% การสั่งการสำเร็จ", text="% การสั่งการสำเร็จ",
+                            title="🏅 Top 10 อุปกรณ์ที่สั่งการสำเร็จสูงสุด (%)")
+    st.plotly_chart(fig_top_success, use_container_width=True)
+
 # ---- Upload and Merge ----
 uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
 
@@ -381,6 +424,18 @@ if uploaded_files:
         #histogram(df_numeric, df_display, flag, countMonth)
         st.info('test')
 
+    #st.write(df_merged)
+    #rank(df_merged)
+
+    # แปลง Timestamp เป็น datetime (ถ้ายังไม่ได้แปลง)
+#df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+
+# เพิ่มคอลัมน์เดือนในรูปแบบ 'YYYY-MM'
+#df["Month"] = df["Timestamp"].dt.to_period("M").astype(str)
+
+# นับจำนวนคำสั่งต่อ Device ต่อเดือน
+    command_counts = df_merged.groupby(["Month", "Device"]).size().reset_index(name="Command Count")
+    st.write(command_counts)
 
     """   
     format_dict = {
