@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from io import BytesIO
 from io import StringIO
 import numpy as np
+import io
 
 color_map = {
         "ม.ค.": "#1f77b4",
@@ -328,18 +329,18 @@ def histogram(df_num,df_dis,flag,countMonth):
 
     st.plotly_chart(fig4_month, use_container_width=True)
 
-def rank(df):
+def ranking(df):
     # รวมข้อมูลตาม Device
     df_summary = df.groupby("Device").agg({
         "สั่งการทั้งหมด": "sum",
         "สั่งการสำเร็จ": "sum"
-    }).reset_index()
+        }).reset_index()
 
     # คำนวณเปอร์เซ็นต์
     df_summary["% การสั่งการสำเร็จ"] = (df_summary["สั่งการสำเร็จ"] / df_summary["สั่งการทั้งหมด"]) * 100
     
     # จัดอันดับ
-    df_summary["อันดับสั่งการทั้งหมด"] = df_summary["สั่งการทั้งหมด"].rank(ascending=False, method='min')
+    df_summary["อันดับสั่งการทั้งหมด"] = df_summary["สั่งการทั้งหมด"].rank(ascending=False, method='min') #ascending=False (เรียงจากมากไปน้อย) method='min' ถ้าอุปกรณ์ 2 ตัวมีค่า สั่งการทั้งหมด เท่ากัน → ทั้งคู่จะได้ "อันดับต่ำสุดในกลุ่มนั้น
     df_summary["อันดับ % สำเร็จ"] = df_summary["% การสั่งการสำเร็จ"].rank(ascending=False, method='min')
     
     # จัดรูปแบบตัวเลข
@@ -370,6 +371,93 @@ def rank(df):
     fig_top_success = px.bar(top10_success, x="Device", y="% การสั่งการสำเร็จ", text="% การสั่งการสำเร็จ",
                             title="🏅 Top 10 อุปกรณ์ที่สั่งการสำเร็จสูงสุด (%)")
     st.plotly_chart(fig_top_success, use_container_width=True)
+
+def ranking_by_month(df):
+    # รวมข้อมูลตามเดือน + อุปกรณ์
+    df_summary = df.groupby(["Availability Period", "Device"]).agg({
+        "สั่งการทั้งหมด": "sum",
+        "สั่งการสำเร็จ": "sum"
+    }).reset_index()
+
+    # คำนวณเปอร์เซ็นต์สำเร็จ
+    df_summary["% การสั่งการสำเร็จ"] = (df_summary["สั่งการสำเร็จ"] / df_summary["สั่งการทั้งหมด"]) * 100
+
+    # จัดอันดับในแต่ละเดือน
+    df_summary["อันดับสั่งการทั้งหมด"] = df_summary.groupby("Availability Period")["สั่งการทั้งหมด"].rank(ascending=False, method="min")
+    df_summary["อันดับ % สำเร็จ"] = df_summary.groupby("Availability Period")["% การสั่งการสำเร็จ"].rank(ascending=False, method="min")
+
+    # จัดรูปแบบ
+    df_summary["สั่งการทั้งหมด"] = df_summary["สั่งการทั้งหมด"].astype(int)
+    df_summary["สั่งการสำเร็จ"] = df_summary["สั่งการสำเร็จ"].astype(int)
+    df_summary["% การสั่งการสำเร็จ"] = df_summary["% การสั่งการสำเร็จ"].round(2)
+
+    st.markdown("## 📅 จัดอันดับอุปกรณ์แยกตามเดือน")
+
+    # แสดงตารางรวม
+    st.dataframe(df_summary, use_container_width=True)
+
+    # เลือกดูเฉพาะเดือน
+    selected_month = st.selectbox("เลือกเดือนเพื่อดู Top 10", df_summary["Availability Period"].unique())
+    top10 = df_summary[df_summary["Availability Period"] == selected_month].sort_values(by="สั่งการทั้งหมด", ascending=False).head(10)
+
+    fig = px.bar(
+        top10,
+        x="Device",
+        y="สั่งการทั้งหมด",
+        text="สั่งการทั้งหมด",
+        title=f"🏅 Top 10 อุปกรณ์ที่มีการสั่งการมากที่สุดในเดือน {selected_month}"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    buffer = io.BytesIO()
+    df_summary.to_excel(buffer, index=False)
+    st.download_button("📥 ดาวน์โหลดตารางจัดอันดับรายเดือน", buffer.getvalue(), file_name="ranking_by_month.xlsx")
+
+def devices_no_command_each_month(df_all):
+    # หาเดือนทั้งหมดที่มีในข้อมูล
+    all_months = df_all["เดือน"].unique()
+    
+    # หาอุปกรณ์ทั้งหมดจากข้อมูลรวมทุกเดือน
+    all_devices = df_all["Device"].unique()
+    
+    result = []
+
+    for month in all_months:
+        # ข้อมูลของเดือนนั้น
+        df_month = df_all[df_all["เดือน"] == month]
+
+        # อุปกรณ์ที่มีการสั่งการในเดือนนั้น
+        active_devices = df_month["Device"].unique()
+
+        # อุปกรณ์ที่ไม่มีการสั่งการ = อุปกรณ์ทั้งหมด - อุปกรณ์ที่มีสั่งการ
+        missing_devices = set(all_devices) - set(active_devices)
+
+        # เพิ่มผลลัพธ์เข้า list
+        for device in missing_devices:
+            result.append({
+                "เดือน": month,
+                "Device": device
+            })
+
+    # สร้าง DataFrame
+    df_missing = pd.DataFrame(result).sort_values(by=["เดือน", "Device"]).reset_index(drop=True)
+
+    # แสดงผล
+    st.markdown("## ❌ รายชื่ออุปกรณ์ที่ไม่ได้สั่งการเลยในแต่ละเดือน")
+    st.dataframe(df_missing, use_container_width=True)
+
+    # ปุ่มดาวน์โหลด
+    buffer = io.BytesIO()
+    df_missing.to_excel(buffer, index=False, engine="openpyxl")
+    buffer.seek(0)
+    st.download_button(
+        label="📥 ดาวน์โหลดรายการอุปกรณ์ที่ไม่มีการสั่งการ (รายเดือน)",
+        data=buffer,
+        file_name="missing_devices_by_month.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    return df_missing
 
 # ---- Upload and Merge ----
 uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
@@ -405,7 +493,9 @@ if uploaded_files:
     # ---- เรียกฟังก์ชัน Pivot เพื่อแสดงตาราง ----
     title = flag  # เก็บไว้ใช้ในชื่อกราฟ
     df_display, devices_all_null, df_numeric = pivot(df_merged, flag)
-
+    ranking(df_merged)
+    ranking_by_month(df_merged)
+    missing_devices_df = devices_no_command_each_month(df_all)
     # ---- นับจำนวนเดือนที่มีการแสดงผล ----
     countMonth = df_numeric.drop(columns=["Avg สั่งการสำเร็จ (%)"]).count(axis=1).max()
     #countMonth = len(df_combined["Availability Period"].unique())
@@ -424,8 +514,7 @@ if uploaded_files:
         #histogram(df_numeric, df_display, flag, countMonth)
         st.info('test')
 
-    #st.write(df_merged)
-    #rank(df_merged)
+    
 
     # แปลง Timestamp เป็น datetime (ถ้ายังไม่ได้แปลง)
 #df["Timestamp"] = pd.to_datetime(df["Timestamp"])
@@ -435,7 +524,6 @@ if uploaded_files:
 
 # นับจำนวนคำสั่งต่อ Device ต่อเดือน
     command_counts = df_merged.groupby(["Month", "Device"]).size().reset_index(name="Command Count")
-    st.write(command_counts)
 
     """   
     format_dict = {
