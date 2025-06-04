@@ -414,8 +414,9 @@ def ranking_by_month(df):
     st.download_button("📥 ดาวน์โหลดตารางจัดอันดับรายเดือน", buffer.getvalue(), file_name="ranking_by_month.xlsx")
 
 def devices_no_command_each_month(df_all):
+    st.dataframe(df_all)
     # หาเดือนทั้งหมดที่มีในข้อมูล
-    all_months = df_all["เดือน"].unique()
+    all_months = df_all["Availability Period"].unique()
     
     # หาอุปกรณ์ทั้งหมดจากข้อมูลรวมทุกเดือน
     all_devices = df_all["Device"].unique()
@@ -424,23 +425,27 @@ def devices_no_command_each_month(df_all):
 
     for month in all_months:
         # ข้อมูลของเดือนนั้น
-        df_month = df_all[df_all["เดือน"] == month]
-
+        df_month = df_all[df_all["สั่งการทั้งหมด"] == None]
+        
         # อุปกรณ์ที่มีการสั่งการในเดือนนั้น
         active_devices = df_month["Device"].unique()
-
+        
         # อุปกรณ์ที่ไม่มีการสั่งการ = อุปกรณ์ทั้งหมด - อุปกรณ์ที่มีสั่งการ
         missing_devices = set(all_devices) - set(active_devices)
 
         # เพิ่มผลลัพธ์เข้า list
         for device in missing_devices:
             result.append({
-                "เดือน": month,
+                "Availability Period": month,
                 "Device": device
             })
-
+    
+    if result:
+        df_missing = pd.DataFrame(result).sort_values(by=["Availability Period", "Device"]).reset_index(drop=True)
+    else:
+        df_missing = pd.DataFrame(columns=["Availability Period", "Device"])  # สร้างตารางเปล่าแบบมีคอลัมน์
     # สร้าง DataFrame
-    df_missing = pd.DataFrame(result).sort_values(by=["เดือน", "Device"]).reset_index(drop=True)
+    #df_missing = pd.DataFrame(result).sort_values(by=["Availability Period", "Device"]).reset_index(drop=True)
 
     # แสดงผล
     st.markdown("## ❌ รายชื่ออุปกรณ์ที่ไม่ได้สั่งการเลยในแต่ละเดือน")
@@ -492,10 +497,10 @@ if uploaded_files:
 
     # ---- เรียกฟังก์ชัน Pivot เพื่อแสดงตาราง ----
     title = flag  # เก็บไว้ใช้ในชื่อกราฟ
-    df_display, devices_all_null, df_numeric = pivot(df_merged, flag)
-    ranking(df_merged)
-    ranking_by_month(df_merged)
-    missing_devices_df = devices_no_command_each_month(df_all)
+    #df_display, devices_all_null, df_numeric = pivot(df_merged, flag)
+    #ranking(df_merged)
+    #ranking_by_month(df_merged)
+    missing_devices_df = devices_no_command_each_month(df_merged)
     # ---- นับจำนวนเดือนที่มีการแสดงผล ----
     countMonth = df_numeric.drop(columns=["Avg สั่งการสำเร็จ (%)"]).count(axis=1).max()
     #countMonth = len(df_combined["Availability Period"].unique())
