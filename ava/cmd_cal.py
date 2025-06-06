@@ -215,7 +215,7 @@ def histogram(df_num,df_dis,flag,countMonth):
 
     # ✅ แปลงค่าทั้งหมดที่เป็น '%' เป็น float
     df_display_clean = df_dis.copy()
-
+    st.dataframe(df_display_clean)
     month_cols = [col for col in df_dis.columns if col not in ["Device", "Avg สั่งการสำเร็จ (%)"]]
 
     for col in month_cols:
@@ -533,6 +533,30 @@ def device_command_summary_table(df, flag):
         file_name="device_no_command_summary.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+    return df
+
+def compare(df):
+    
+    # เติมค่า NaN ด้วย 0 แล้วแปลงชนิดข้อมูลให้เหมาะสม
+    df[["สั่งการทั้งหมด", "สั่งการสำเร็จ", "สั่งการสำเร็จ (%)"]] = df[["สั่งการทั้งหมด", "สั่งการสำเร็จ", "สั่งการสำเร็จ (%)"]].fillna(0).astype(int)
+    df["สั่งการสำเร็จ (%)"] = df["สั่งการสำเร็จ (%)"].fillna(0).round(2)
+    st.dataframe(df)
+    st.write(df.columns)
+    # เลือก Device ที่ต้องการเจาะลึก
+    device_select = st.selectbox("🔍 เลือกอุปกรณ์เพื่อดูแนวโน้ม % การสั่งการ", df["Device"].unique())
+
+    # ข้อมูลของอุปกรณ์นั้น
+    device_df = df[df["Device"] == device_select]
+
+    fig_line = px.line(
+        df,
+        x="Device",
+        y="สั่งการสำเร็จ (%)",
+        title=f"📈 แนวโน้ม % การสั่งการสำเร็จของอุปกรณ์ {device_select}",
+        markers=True
+    )
+    fig_line.update_traces(texttemplate="%{y:.1f}%", textposition="top center")
+    st.plotly_chart(fig_line, use_container_width=True)
 
 # ---- Upload and Merge ----
 uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
@@ -568,15 +592,15 @@ if uploaded_files:
     # ---- เรียกฟังก์ชัน Pivot เพื่อแสดงตาราง ----
     title = flag  # เก็บไว้ใช้ในชื่อกราฟ
     #df_display, devices_all_null, df_numeric = pivot(df_merged, flag)
-    ranking(df_merged)
-    ranking_by_month(df_merged)
+    #ranking(df_merged)
+    #ranking_by_month(df_merged)
     #missing_devices_df = devices_with_no_commands(df_merged)
-    device_command_summary_table(df_merged, flag)
-    
+    df_summary = device_command_summary_table(df_merged, flag)
+    compare(df_summary)
 
     # ---- นับจำนวนเดือนที่มีการแสดงผล ----
     #countMonth = df_merged.drop(columns=["Avg สั่งการสำเร็จ (%)"]).count(axis=1).max()
-    #countMonth = len(df_combined["Availability Period"].unique())
+    countMonth = len(df_merged["Availability Period"].unique())
 
     # ---- เรียกฟังก์ชัน Visualization ----
     with st.expander("📈 Line Chart", expanded=True):
@@ -589,7 +613,7 @@ if uploaded_files:
         #scatterplot(df_numeric, df_display, flag, countMonth)
         st.info('test')
     with st.expander("📊 Histogram", expanded=True):
-        #histogram(df_numeric, df_display, flag, countMonth)
+        histogram(df_merged, df_merged, flag, countMonth)
         st.info('test')
 
     
