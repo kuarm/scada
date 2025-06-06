@@ -413,56 +413,126 @@ def ranking_by_month(df):
     df_summary.to_excel(buffer, index=False)
     st.download_button("📥 ดาวน์โหลดตารางจัดอันดับรายเดือน", buffer.getvalue(), file_name="ranking_by_month.xlsx")
 
-def devices_no_command_each_month(df_all):
-    st.dataframe(df_all)
-    # หาเดือนทั้งหมดที่มีในข้อมูล
-    all_months = df_all["Availability Period"].unique()
-    
-    # หาอุปกรณ์ทั้งหมดจากข้อมูลรวมทุกเดือน
-    all_devices = df_all["Device"].unique()
-    
-    result = []
+    # ==== เพิ่ม: อุปกรณ์ที่ไม่มีการสั่งการเลย ====
 
-    for month in all_months:
-        # ข้อมูลของเดือนนั้น
-        df_month = df_all[df_all["สั่งการทั้งหมด"] == None]
-        
-        # อุปกรณ์ที่มีการสั่งการในเดือนนั้น
-        active_devices = df_month["Device"].unique()
-        
-        # อุปกรณ์ที่ไม่มีการสั่งการ = อุปกรณ์ทั้งหมด - อุปกรณ์ที่มีสั่งการ
-        missing_devices = set(all_devices) - set(active_devices)
+    st.markdown("## ❌ รายชื่ออุปกรณ์ที่ไม่มีการสั่งการเลยในแต่ละเดือน")
 
-        # เพิ่มผลลัพธ์เข้า list
-        for device in missing_devices:
-            result.append({
-                "Availability Period": month,
-                "Device": device
-            })
-    
-    if result:
-        df_missing = pd.DataFrame(result).sort_values(by=["Availability Period", "Device"]).reset_index(drop=True)
-    else:
-        df_missing = pd.DataFrame(columns=["Availability Period", "Device"])  # สร้างตารางเปล่าแบบมีคอลัมน์
-    # สร้าง DataFrame
-    #df_missing = pd.DataFrame(result).sort_values(by=["Availability Period", "Device"]).reset_index(drop=True)
+    # แปลง None ใน 'สั่งการทั้งหมด' เป็น 0
+    df["สั่งการทั้งหมด"] = df["สั่งการทั้งหมด"].fillna(0).astype(int)
 
-    # แสดงผล
-    st.markdown("## ❌ รายชื่ออุปกรณ์ที่ไม่ได้สั่งการเลยในแต่ละเดือน")
-    st.dataframe(df_missing, use_container_width=True)
+    # ตรวจสอบว่ามีคอลัมน์เดือนหรือยัง
+    if "Availability Period" not in df.columns:
+        df["Availability Period"] = pd.to_datetime(df["Field change time"]).dt.to_period("M").astype(str)
 
-    # ปุ่มดาวน์โหลด
+    # กรองอุปกรณ์ที่ไม่มีการสั่งการ
+    df_no_cmd = df[df["สั่งการทั้งหมด"] == 0]
+    df_result = df_no_cmd[["Availability Period", "Device"]].drop_duplicates().sort_values(
+        by=["Availability Period", "Device"]
+    ).reset_index(drop=True)
+
+    st.dataframe(df_result, use_container_width=True)
+
     buffer = io.BytesIO()
-    df_missing.to_excel(buffer, index=False, engine="openpyxl")
+    df_result.to_excel(buffer, index=False, engine="openpyxl")
     buffer.seek(0)
     st.download_button(
-        label="📥 ดาวน์โหลดรายการอุปกรณ์ที่ไม่มีการสั่งการ (รายเดือน)",
+        label="📥 ดาวน์โหลดรายชื่ออุปกรณ์ที่ไม่มีการสั่งการ",
         data=buffer,
-        file_name="missing_devices_by_month.xlsx",
+        file_name="devices_no_command.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-    return df_missing
+def devices_with_no_commands(df_all):
+    # แปลงค่า None/NaN เป็น 0
+    df_all["สั่งการทั้งหมด"] = df_all["สั่งการทั้งหมด"].fillna(0).astype(int)
+
+    # ตรวจสอบว่ามีคอลัมน์ "Availability Period" หรือยัง
+    if "Availability Period" not in df_all.columns:
+        df_all["Availability Period"] = pd.to_datetime(df_all["Field change time"]).dt.to_period("M").astype(str)
+
+    # กรองเฉพาะอุปกรณ์ที่ไม่มีการสั่งการเลย
+    df_no_cmd = df_all[df_all["สั่งการทั้งหมด"] == 0]
+
+    # ตัดซ้ำ เหลือเฉพาะ Device และเดือน
+    df_result = df_no_cmd[["Availability Period", "Device"]].drop_duplicates().sort_values(
+        by=["Availability Period", "Device"]
+    ).reset_index(drop=True)
+
+    # แสดงผล
+    st.markdown("## ❌ อุปกรณ์ที่ไม่มีการสั่งการเลยในแต่ละเดือน")
+    st.dataframe(df_result, use_container_width=True)
+
+    # ปุ่มดาวน์โหลด
+    buffer = io.BytesIO()
+    df_result.to_excel(buffer, index=False, engine="openpyxl")
+    buffer.seek(0)
+    st.download_button(
+        label="📥 ดาวน์โหลดรายชื่ออุปกรณ์ที่ไม่มีการสั่งการ",
+        data=buffer,
+        file_name="devices_no_command.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    return df_result
+
+def device_command_summary_table(df, flag):
+    st.markdown("## 📊 สรุปอุปกรณ์ที่ไม่ได้สั่งการในแต่ละเดือน")
+
+    # เติม missing เป็น 0 และจัดรูปแบบ
+    df["สั่งการทั้งหมด"] = df["สั่งการทั้งหมด"].fillna(0).astype(int)
+
+    # ดึงเดือนและปี
+    if "Availability Period" not in df.columns:
+        df["Availability Period"] = pd.to_datetime(df["Field change time"]).dt.to_period("M").astype(str)
+    
+    df["มีการสั่งการ"] = df["สั่งการทั้งหมด"].apply(lambda x: 1 if x > 0 else 0)
+
+    # แปลงเป็น datetime แล้วเปลี่ยนชื่อเดือน → ม.ค. 2025
+    df["เดือนแสดงผล"] = pd.to_datetime(df["Availability Period"], format="%Y-%m")
+    df["เดือนแสดงผล"] = df["เดือนแสดงผล"].dt.strftime("%b %Y")  # เช่น Jan 2025
+    month_map = {
+        "Jan": "ม.ค.", "Feb": "ก.พ.", "Mar": "มี.ค.", "Apr": "เม.ย.",
+        "May": "พ.ค.", "Jun": "มิ.ย.", "Jul": "ก.ค.", "Aug": "ส.ค.",
+        "Sep": "ก.ย.", "Oct": "ต.ค.", "Nov": "พ.ย.", "Dec": "ธ.ค."
+    }
+    df["เดือนแสดงผล"] = df["เดือนแสดงผล"].apply(lambda x: f"{month_map.get(x[:3], x[:3])} {x[4:]}")
+
+    # เปลี่ยนชื่อ Device ตาม flag
+    if flag == "สถานีไฟฟ้า":
+        df["Device"] = df["Device"].apply(lambda x: x.split("_")[0])  # หรือชื่อสถานีที่คุณต้องการ
+
+    # Pivot Table
+    pivot = df.pivot_table(index="Device", columns="เดือนแสดงผล", values="มีการสั่งการ", aggfunc="max", fill_value=0)
+    pivot = pivot.applymap(lambda x: "✅" if x == 1 else "❌")
+
+    # เปลี่ยนชื่อคอลัมน์ Device ตาม flag
+    new_device_column_name = "อุปกรณ์ FRTU" if flag == "อุปกรณ์ FRTU" else "สถานีไฟฟ้า"
+    pivot.index.name = new_device_column_name
+
+    # อุปกรณ์ที่ไม่มีการสั่งการเลย
+    never_commanded = pivot[(pivot == "❌").all(axis=1)].copy()
+    never_commanded.index.name = new_device_column_name
+
+    # แสดงตาราง
+    st.markdown("### 📌 ตารางสรุป (✅ = มีสั่งการ, ❌ = ไม่มีสั่งการ)")
+    st.dataframe(pivot, use_container_width=True)
+
+    st.markdown("### 🚫 อุปกรณ์ที่ไม่มีการสั่งการเลยทุกเดือน")
+    st.dataframe(never_commanded, use_container_width=True)
+
+    # ปุ่มดาวน์โหลด
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        pivot.to_excel(writer, sheet_name="Summary")
+        never_commanded.to_excel(writer, sheet_name="Never Commanded")
+    buffer.seek(0)
+
+    st.download_button(
+        label="📥 ดาวน์โหลดตารางสรุปอุปกรณ์",
+        data=buffer,
+        file_name="device_no_command_summary.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 # ---- Upload and Merge ----
 uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
@@ -498,11 +568,14 @@ if uploaded_files:
     # ---- เรียกฟังก์ชัน Pivot เพื่อแสดงตาราง ----
     title = flag  # เก็บไว้ใช้ในชื่อกราฟ
     #df_display, devices_all_null, df_numeric = pivot(df_merged, flag)
-    #ranking(df_merged)
-    #ranking_by_month(df_merged)
-    missing_devices_df = devices_no_command_each_month(df_merged)
+    ranking(df_merged)
+    ranking_by_month(df_merged)
+    #missing_devices_df = devices_with_no_commands(df_merged)
+    device_command_summary_table(df_merged, flag)
+    
+
     # ---- นับจำนวนเดือนที่มีการแสดงผล ----
-    countMonth = df_numeric.drop(columns=["Avg สั่งการสำเร็จ (%)"]).count(axis=1).max()
+    #countMonth = df_merged.drop(columns=["Avg สั่งการสำเร็จ (%)"]).count(axis=1).max()
     #countMonth = len(df_combined["Availability Period"].unique())
 
     # ---- เรียกฟังก์ชัน Visualization ----
