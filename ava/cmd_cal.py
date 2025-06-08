@@ -6,21 +6,23 @@ from io import BytesIO
 from io import StringIO
 import numpy as np
 import io
+from plotly.express.colors import qualitative
+
 
 color_map = {
-        "ม.ค.": "#1f77b4",
-        "ก.พ.": "#ff7f0e",
-        "มี.ค.": "#2ca02c",
-        "เม.ย.": "#d62728",
-        "พ.ค.": "#9467bd",
-        "มิ.ย.": "#8c564b",
-        "ก.ค.": "#e377c2",
-        "ส.ค.": "#7f7f7f",
-        "ก.ย.": "#bcbd22",
-        "ต.ค.": "#17becf",
-        "พ.ย.": "#aec7e8",
-        "ธ.ค.": "#ffbb78"
-        }
+    "ม.ค. 2025": "#1f77b4",  # ฟ้า
+    "ก.พ. 2025": "#ff7f0e",  # ส้ม
+    "มี.ค. 2025": "#2ca02c",  # เขียว
+    "เม.ย. 2025": "#d62728",  # แดง
+    "พ.ค. 2025": "#9467bd",  # ม่วง
+    "มิ.ย. 2025": "#8c564b",  # น้ำตาล
+    "ก.ค. 2025": "#e377c2",  # ชมพู
+    "ส.ค. 2025": "#7f7f7f",  # เทา
+    "ก.ย. 2025": "#bcbd22",  # เขียวมะนาว
+    "ต.ค. 2025": "#17becf",  # ฟ้าน้ำทะเล
+    "พ.ย. 2025": "#aec7e8",  # ฟ้าอ่อน
+    "ธ.ค. 2025": "#ffbb78",  # ส้มอ่อน
+}
 
 def pivot(df,flag):
     df_pivot = df.copy()
@@ -188,15 +190,14 @@ def scatterplot(df_num,df_dis,flag,countMonth):
     )
     df_scatter = df_scatter.dropna(subset=["สั่งการสำเร็จ (%)"])
     
-    fig3_month = px.bar(
+    fig3_month = px.scatter(
         df_scatter,
         x="Device",
         y="สั่งการสำเร็จ (%)",
         color="เดือน",
         color_discrete_map=color_map,
-        #size=[10]*len(df_scatter),
-        #size_max=12,
-        barmode="stack", #stack
+        size=[10]*len(df_scatter),
+        size_max=12,
         text="สั่งการสำเร็จ (%)",  # ✅ เพิ่มเพื่อให้แสดงข้อความ
         title=f"🔵 Scatter : % สั่งการสำเร็จรายเดือน ของแต่ละ {flag}"
         )
@@ -205,16 +206,15 @@ def scatterplot(df_num,df_dis,flag,countMonth):
     fig3_month.update_layout(
         xaxis_tickangle=-45,
         xaxis_title=flag,
-        #yaxis_range=[0, 120],
-        yaxis_title="% การสั่งการสำเร็จ", #รวม % สั่งการสำเร็จ (Stacked)
-        yaxis_range=[0, df_scatter.groupby("Device")["สั่งการสำเร็จ (%)"].sum().max() * 1.1]
+        yaxis_range=[0, 120],
+        yaxis_title="% การสั่งการสำเร็จ" #รวม % สั่งการสำเร็จ (Stacked)
         )
 
     fig3_month.update_traces(
-        #marker=dict(size=12, symbol="circle", line=dict(width=1, color="DarkSlateGrey")),
+        marker=dict(size=12, symbol="circle", line=dict(width=1, color="DarkSlateGrey")),
         texttemplate="%{text:.2f}",  # ✅ กำหนดรูปแบบแสดงค่า
-        textposition="inside" #"top center", #outside    # ✅ ตำแหน่งข้อความ
-        #textfont_size=10,
+        textposition="top center", #"top center", #outside    # ✅ ตำแหน่งข้อความ
+        textfont_size=10,
         )
 
     st.plotly_chart(fig3_month, use_container_width=True)
@@ -341,6 +341,78 @@ def histogram(df_num,df_dis,flag,countMonth):
 
     st.plotly_chart(fig4_month, use_container_width=True)
 
+def stacked(df_num,df_dis,flag,countMonth):
+    # ✅ ตัวเลือกให้ผู้ใช้เลือกประเภทของ Bar Chart
+    chart_mode = st.selectbox("🛠️ เลือกรูปแบบกราฟ", ["Grouped", "Stacked"])
+
+    # ✅ เตรียมข้อมูล (เหมือนเดิม)
+    df_display_clean = df_dis.copy()
+    month_cols = [col for col in df_dis.columns if col not in ["Device", "Avg สั่งการสำเร็จ (%)"]]
+
+    for col in month_cols:
+        df_display_clean[col] = (
+            df_display_clean[col]
+            .replace("-", None)
+            .str.replace("%", "", regex=False)
+        )
+        df_display_clean[col] = pd.to_numeric(df_display_clean[col], errors="coerce")
+
+    df_bar = df_display_clean.melt(
+        id_vars=["Device"],
+        value_vars=month_cols,
+        var_name="เดือน",
+        value_name="สั่งการสำเร็จ (%)"
+    ).dropna(subset=["สั่งการสำเร็จ (%)"])
+
+    # ✅ เลือก barmode ตาม toggle
+    barmode = "group" if chart_mode == "Grouped" else "stack"
+
+    # ✅ ชื่อกราฟให้เปลี่ยนตามประเภท
+    title = (
+        f"📊 Grouped Bar Chart: % สั่งการสำเร็จรายเดือนของแต่ละ {flag}"
+        if barmode == "group"
+        else f"📊 Stacked Bar Chart: % สั่งการสำเร็จรายเดือนของแต่ละ {flag}"
+    )
+
+    # ✅ ดึงชื่อเดือนทั้งหมดจาก df_bar หรือ df ที่ใช้ plot
+    unique_months = df_bar["เดือน"].unique()
+
+    # ✅ ใช้ชุดสีจาก Plotly
+    color_palette = px.colors.qualitative.Plotly  # มี 10 สีหลัก
+
+    # ✅ สร้าง color_map โดยวนสีหากเดือนมากกว่า 10 เดือน
+    color_map = {
+        month: color_palette[i % len(color_palette)] for i, month in enumerate(sorted(unique_months))
+    }
+
+    # ✅ วาดกราฟ
+    fig_bar = px.bar(
+        df_bar,
+        x="Device",
+        y="สั่งการสำเร็จ (%)",
+        color="เดือน",
+        color_discrete_map=color_map,
+        barmode=barmode,
+        text="สั่งการสำเร็จ (%)",
+        title=title
+    )
+
+    fig_bar.update_layout(
+        xaxis_tickangle=-45,
+        xaxis_title=flag,
+        yaxis_range=[0, 400]
+        uniformtext_minsize=8,
+        uniformtext_mode='hide'  # หรือ 'show
+    )
+
+    fig_bar.update_traces(
+        texttemplate="%{text:.2f}",
+        textposition="inside" if barmode == "stack" else "outside",
+        marker=dict(line=dict(width=0.5, color="DarkSlateGrey"))
+    )
+
+    # ✅ แสดงผล
+    st.plotly_chart(fig_bar, use_container_width=True)
 def ranking(df):
     # รวมข้อมูลตาม Device
     df_summary = df.groupby("Device").agg({
@@ -624,7 +696,10 @@ if uploaded_files:
         scatterplot(df_numeric, df_display, flag, countMonth)
         st.info('test')
     with st.expander("📊 Histogram", expanded=True):
-        histogram(df_numeric, df_merged, flag, countMonth)
+        histogram(df_numeric, df_display, flag, countMonth)
+        st.info('test')
+    with st.expander("📊 Stacked", expanded=True):
+        stacked(df_numeric, df_display, flag, countMonth)
         st.info('test')
 
     
