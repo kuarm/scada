@@ -132,6 +132,8 @@ def lineplot(df):
     st.plotly_chart(fig_line, use_container_width=True)
 
 def barplot(df,flag,countMonth):
+    #st.dataframe(df)
+    #st.write(df.columns)
     fig_bar = px.bar(
         df.reset_index(), 
         x="Device",
@@ -186,27 +188,37 @@ def scatterplot(df_num,df_dis,flag,countMonth):
     )
     df_scatter = df_scatter.dropna(subset=["สั่งการสำเร็จ (%)"])
     
-    fig3_month = px.scatter(
+    fig3_month = px.bar(
         df_scatter,
         x="Device",
         y="สั่งการสำเร็จ (%)",
         color="เดือน",
         color_discrete_map=color_map,
-        size=[10]*len(df_scatter),
-        size_max=12,
+        #size=[10]*len(df_scatter),
+        #size_max=12,
+        barmode="stack", #stack
         text="สั่งการสำเร็จ (%)",  # ✅ เพิ่มเพื่อให้แสดงข้อความ
         title=f"🔵 Scatter : % สั่งการสำเร็จรายเดือน ของแต่ละ {flag}"
         )
-    fig3_month.update_layout(xaxis_tickangle=-45, yaxis_range=[0, 120], xaxis_title=flag)
+
+    # ✅ ปรับแต่ง layout
+    fig3_month.update_layout(
+        xaxis_tickangle=-45,
+        xaxis_title=flag,
+        #yaxis_range=[0, 120],
+        yaxis_title="% การสั่งการสำเร็จ", #รวม % สั่งการสำเร็จ (Stacked)
+        yaxis_range=[0, df_scatter.groupby("Device")["สั่งการสำเร็จ (%)"].sum().max() * 1.1]
+        )
+
     fig3_month.update_traces(
-        marker=dict(size=12, symbol="circle", line=dict(width=1, color="DarkSlateGrey")),
+        #marker=dict(size=12, symbol="circle", line=dict(width=1, color="DarkSlateGrey")),
         texttemplate="%{text:.2f}",  # ✅ กำหนดรูปแบบแสดงค่า
-        textposition="top center",     # ✅ ตำแหน่งข้อความ
-        textfont_size=10,
+        textposition="inside" #"top center", #outside    # ✅ ตำแหน่งข้อความ
+        #textfont_size=10,
         )
 
     st.plotly_chart(fig3_month, use_container_width=True)
-
+    
 def histogram(df_num,df_dis,flag,countMonth):
     # กำหนดช่วง bin เอง เช่น 0-10, 10-20, ..., 90-100
     bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
@@ -540,8 +552,7 @@ def compare(df):
     # เติมค่า NaN ด้วย 0 แล้วแปลงชนิดข้อมูลให้เหมาะสม
     df[["สั่งการทั้งหมด", "สั่งการสำเร็จ", "สั่งการสำเร็จ (%)"]] = df[["สั่งการทั้งหมด", "สั่งการสำเร็จ", "สั่งการสำเร็จ (%)"]].fillna(0).astype(int)
     df["สั่งการสำเร็จ (%)"] = df["สั่งการสำเร็จ (%)"].fillna(0).round(2)
-    st.dataframe(df)
-    st.write(df.columns)
+    
     # เลือก Device ที่ต้องการเจาะลึก
     device_select = st.selectbox("🔍 เลือกอุปกรณ์เพื่อดูแนวโน้ม % การสั่งการ", df["Device"].unique())
 
@@ -591,12 +602,12 @@ if uploaded_files:
 
     # ---- เรียกฟังก์ชัน Pivot เพื่อแสดงตาราง ----
     title = flag  # เก็บไว้ใช้ในชื่อกราฟ
-    #df_display, devices_all_null, df_numeric = pivot(df_merged, flag)
+    df_display, devices_all_null, df_numeric = pivot(df_merged, flag)
     #ranking(df_merged)
     #ranking_by_month(df_merged)
     #missing_devices_df = devices_with_no_commands(df_merged)
-    df_summary = device_command_summary_table(df_merged, flag)
-    compare(df_summary)
+    #df_summary = device_command_summary_table(df_merged, flag)
+    #compare(df_summary)
 
     # ---- นับจำนวนเดือนที่มีการแสดงผล ----
     #countMonth = df_merged.drop(columns=["Avg สั่งการสำเร็จ (%)"]).count(axis=1).max()
@@ -607,13 +618,13 @@ if uploaded_files:
         #lineplot(df_display)
         st.info('test')
     with st.expander("📊 Bar Chart", expanded=True):
-        #barplot(df_numeric, flag, countMonth)
+        barplot(df_numeric, flag, countMonth)
         st.info('test')
     with st.expander("🔵 Scatter Plot", expanded=True):
-        #scatterplot(df_numeric, df_display, flag, countMonth)
+        scatterplot(df_numeric, df_display, flag, countMonth)
         st.info('test')
     with st.expander("📊 Histogram", expanded=True):
-        histogram(df_merged, df_merged, flag, countMonth)
+        histogram(df_numeric, df_merged, flag, countMonth)
         st.info('test')
 
     
