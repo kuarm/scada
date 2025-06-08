@@ -400,15 +400,16 @@ def stacked(df_num,df_dis,flag,countMonth):
     fig_bar.update_layout(
         xaxis_tickangle=-45,
         xaxis_title=flag,
-        yaxis_range=[0, 400]
+        yaxis_range=[0, 400],
         uniformtext_minsize=8,
-        uniformtext_mode='hide'  # หรือ 'show
+        uniformtext_mode='show'  # หรือ 'show
     )
 
     fig_bar.update_traces(
         texttemplate="%{text:.2f}",
-        textposition="inside" if barmode == "stack" else "outside",
-        marker=dict(line=dict(width=0.5, color="DarkSlateGrey"))
+        textposition="inside", #if barmode == "stack" else "outside",
+        marker=dict(line=dict(width=0.5, color="DarkSlateGrey")),
+        insidetextfont=dict(color="white")  # หรือ "black" ตามสี bar
     )
 
     # ✅ แสดงผล
