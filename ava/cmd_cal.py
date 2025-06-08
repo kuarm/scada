@@ -67,6 +67,7 @@ def pivot(df,flag):
             pivot_df[col] = pivot_df[col].apply(format_percent)
     
     pivot_df_display = pivot_df.reset_index()
+    
     pivot_df_rename = pivot_df_display.copy()
     pivot_df_rename = pivot_df_rename.rename(columns={
         "Device": flag})
