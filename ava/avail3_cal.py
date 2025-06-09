@@ -353,7 +353,7 @@ def calculate_device_availability(df_filtered):
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
 
     #st.dataframe(df_filtered)
-    #st.dataframe(device_online_duration)
+    st.dataframe(device_online_duration)
 
     """ function DL
     def to_excel(df):
@@ -631,8 +631,9 @@ def main():
         if df_event is not None and not df_remote.empty:
             #if df_remote is not None and not df_remote.empty and df_filtered is not None and not df_filtered.empty:
             #sidebar เลือกเวลา
-            df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%Y-%m-%d %I:%M:%S.%f", errors='coerce')
-            #df_event["Field change time"] = pd.to_datetime(df_event["Field change time"],errors='coerce',dayfirst=True)
+            #df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%Y-%m-%d %I:%M:%S.%f", errors='coerce')
+            #df_event["Field change time"] = pd.to_datetime(df_event["Field change time"], format="%d/%m/%Y %I:%M:%S.%f", errors='coerce')
+            df_event["Field change time"] = pd.to_datetime(df_event["Field change time"],errors='coerce',dayfirst=True)
             # แสดงค่าพร้อม millisecond
             #df_event["Field change time"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
             #st.dataframe(df_event["Field change time"].dt.strftime('%Y-%m-%d %H:%M:%S.%f').unique())
@@ -698,13 +699,16 @@ def main():
             """
         
         ###-----Calc-----###
-        #Devices = ["S1-RCS-0001","S1-RCS-0003"]
+        #Devices = ["S1-AVR-0012","S1-AVR-0013","S1-LBS-0001"]
         #df_event = df_event[df_event["Device"].isin(Devices)]
+        #st.dataframe(df_event)
         #df_event = df_event[df_event["Device"] == "S1-RCS-0003"]
         #df_event = df_event[df_event["Device"].str.startswith("S1-RCS", na=False)]
         
         df_event_ = df_event.copy()
         df_split = split_state(df_event_)
+        #st.info("tete")
+        #st.dataframe(df_split)
         #df_combined_sort = sort_state_chain(df_split)
         #df_combined_sort["Field change time"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
 
@@ -743,12 +747,9 @@ def main():
         state_summary = calculate_state_summary(df_combined) #Avail แต่ละ state
         device_availability = calculate_device_availability(df_combined)
         df_merged, state_count, state_duration = calculate_device_count(df_combined,device_availability)
-        #mode_select = st.radio("Sub or Frtu", options=["substation","frtu"])
-        #if mode_select == 'substation':
-        #    flag = 'substation'
-        #else:
-        flag = 'frtu'
-        #flag = 'substation'
+
+        flag = st.selectbox("🔍 เลือกระดับการวิเคราะห์", ["frtu", "substation"])
+
         df_merged = merge_data(df_remote_sub,df_merged,flag)
         df_merged_add = add_value(df_merged)
 
