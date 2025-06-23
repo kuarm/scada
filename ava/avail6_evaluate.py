@@ -196,109 +196,88 @@ def df_addColMonth(df):
     
     return pivot_df
 
-def evaluate(df,bins,labels,flag,owner):
+def evaluate(df,bins,labels,flag):
     #เพิ่ม Month
     df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
     df["Month_str"] = df["Month"].dt.strftime("%Y-%m")
     df["Availability (%)"] = df["Availability (%)"] * 100
 
+    all_month_summaries = []  # 🔹 รวมไว้ทีหลัง
+
+    # กำหนดเงื่อนไขสำหรับผลการประเมิน
+    def evaluate_result(row):
+        if row == "90 < Availability (%) <= 100": #label == "90 < Availability (%) <= 100": รับ String
+            return "✅"
+        elif row == "80 < Availability (%) <= 90":
+            return "⚠️"
+        else:
+            return "❌"
+        
     # 🔹 ฟังก์ชันประเมินผลในแต่ละกลุ่ม (PEA หรือ Producer)
     def evaluate_group(df_group, owner_label):
         # เพิ่มคอลัมน์ "เกณฑ์การประเมิน"
         df_group["เกณฑ์การประเมิน"] = pd.cut(df["Availability (%)"], bins=bins, labels=labels, right=True)
-        #df_pea = df[df["ผู้ดูแล"] == "PEA ดูแล"]
-        #df_Producer = df[df["ผู้ดูแล"] == "Producer ดูแล"]
+        #df_pea = df[df["ผู้ดูแล"] == "PEA ดูแล"] #df_Producer = df[df["ผู้ดูแล"] == "Producer ดูแล"]
 
-        
-        # กำหนดเงื่อนไขสำหรับผลการประเมิน
-        def evaluate_result(row):
-            if row["เกณฑ์การประเมิน"] == "90 < Availability (%) <= 100":
-                return "✅"
-            elif row["เกณฑ์การประเมิน"] == "80 < Availability (%) <= 90":
-                return "⚠️"
-            else:
-                return "❌"
         # เพิ่มคอลัมน์ "ผลการประเมิน"
-        df_group["ผลการประเมิน"] = df_group.apply(evaluate_result, axis=1)
-
+        df_group["ผลการประเมิน"] = df_group["เกณฑ์การประเมิน"].apply(evaluate_result)
 
         # ✅ รายเดือนเฉลี่ย
         month_summary = df_group.groupby("Month_str")["Availability (%)"].mean().reset_index()
         month_summary["เกณฑ์การประเมิน"] = pd.cut(month_summary["Availability (%)"], bins=bins, labels=labels)
         month_summary["ผลการประเมิน"] = month_summary["เกณฑ์การประเมิน"].apply(evaluate_result)
         month_summary["จำนวน Device"] = df_group.groupby("Month_str")["Device"].nunique().values
+        month_summary["ผู้ดูแล"] = owner_label  # 🔹 เพิ่มคอลัมน์ระบุเจ้าของ
         #month_summary["ผลการประเมิน"] = month_summary["เกณฑ์การประเมิน"].apply(
         #    lambda x: "✅" if x == "90 < Availability (%) <= 100" else ("⚠️" if x == "80 < Availability (%) <= 90" else "❌")
         #)
 
-        month_summary_re = month_summary.copy()
         month_summary_re = month_summary.rename(columns={
                 "Month_str": "ปี-เดือน",
-                "จำนวน Device": f"จำนวน {flag}",
+                "จำนวน Device": "จำนวน",
                 "Availability (%)": "Avg.Availability (%)"
             })
-
-        ### ✅
-        st.info(f"✅ ประเมินผล Availability (%) รายเดือนเฉลี่ยของ {flag} ({owner})")
-        st.write(month_summary_re)      
-
-        # ✅ รายอุปกรณ์เฉลี่ย
-        # คำนวณค่าเฉลี่ยของ Availability (%) แยกตาม Device โดยเฉลี่ยจากหลายเดือน
-        device_avg = df_group.groupby("Device")["Availability (%)"].mean().reset_index()
-        device_avg.columns = ["Device", "Avg Availability (%)"]
-        device_avg["เกณฑ์การประเมิน"] = pd.cut(device_avg["Avg Availability (%)"],bins=bins,labels=labels)
-        device_avg["ผลการประเมิน"] = device_avg["เกณฑ์การประเมิน"].apply(evaluate_result)
-
-        # 3. แสดงผลลัพธ์เป็นสัญลักษณ์ (✅ ⚠️ ❌)
-        def evaluate_symbol(x):
-            if x == "90 < Availability (%) <= 100":
-                return "✅"
-            elif x == "80 < Availability (%) <= 90":
-                return "⚠️"
-            else:
-                return "❌"
-
-        #device_avg["ผลการประเมิน"] = device_avg["เกณฑ์การประเมิน"].apply(evaluate_symbol)
-
-        # 4. สรุปจำนวนเดือนทั้งหมด (ไม่แสดงในตาราง device_avg)
-        total_months = df_group["Month"].nunique()
-        #st.info(f"✅ สรุปผลคิดจากข้อมูลทั้งหมด {total_months} เดือน")
         
-            # เพิ่มการประเมินผลแบบสัญลักษณ์
-        def evaluate_status(avg):
-            if avg > 90:
-                return "✅"
-            elif avg > 80:
-                return "⚠️"
-            else:
-                return "❌"
-
-        #device_avg["Evaluation"] = device_avg["Avg Availability (%)"].apply(evaluate_status)
-
-        #device_months = df.groupby("Device")["Month"].nunique().reset_index()
-        #device_months.columns = ["Device", "Active Months"]
-
-        # รวมเข้ากับตาราง avg
-        #device_avg = device_avg.merge(device_months, on="Device")
-        
-        ### ✅
-        st.info(f"✅ ประเมินผล Availability (%) รายอุปกรณ์เฉลี่ย {total_months} เดือน แยกตาม{flag}")
-        st.dataframe(device_avg)
-
+        return month_summary_re
+         
     # 🔸 เรียกประเมินแต่ละกลุ่ม
     for owner_label in ["PEA ดูแล", "Producer ดูแล"]:
         df_group = df[df["ผู้ดูแล"] == owner_label].copy()
-        if df_group.empty:
-            st.warning(f"⚠️ ไม่มีข้อมูลของกลุ่ม: {owner_label}")
-            continue
-        evaluate_group(df_group, owner_label)
+        if not df_group.empty:
+            summary = evaluate_group(df_group, owner_label)
+            all_month_summaries.append(summary)
 
-    # ✅ Pivot แสดง Availability รายเดือนทุกอุปกรณ์
-    pivot_df = df_addColMonth(df)
-    pivot_df.rename(columns={"Device": flag}, inplace=True)
-    st.info(f"✅ สรุป Availability (%) รายเดือนของ {flag}")
-    st.write(pivot_df)
-        
+    # ✅ รวมผลลัพธ์ทุกกลุ่ม
+    final_month_summary = pd.concat(all_month_summaries, ignore_index=True)
+    # แปลงปี-เดือนกลับเป็น datetime เพื่อง่ายต่อการ sort
+    final_month_summary["ปี-เดือน-dt"] = pd.to_datetime(final_month_summary["ปี-เดือน"], format="%Y-%m", errors="coerce")
+    # เรียงตามเวลา
+    final_month_summary = final_month_summary.sort_values(by="ปี-เดือน-dt")
+    # เพิ่มคอลัมน์ลำดับ
+    final_month_summary.insert(0, "ลำดับ", range(1, len(final_month_summary) + 1))
+    # ลบคอลัมน์ช่วยถ้าไม่ต้องการแสดง
+    final_month_summary = final_month_summary.drop(columns=["ปี-เดือน-dt"])
+    ### ✅ แสดงรวมในตารางเดียว
+    st.info(f"📊 ตารางสรุปรายเดือนเฉลี่ย Availability (%) ของ {flag} (แยกตามผู้ดูแล)")
+    # ✅ แสดงผลโดยซ่อน index ด้านซ้าย
+    st.dataframe(final_month_summary, use_container_width=True, hide_index=True)
+
+    #fig_bar1 = px.bar(final_month_summary, x="ปี-เดือน", y="Avg.Availability (%)", color="ผู้ดูแล", barmode="group")
+    #st.plotly_chart(fig_bar1, use_container_width=True)
+
+    # ✅ รายอุปกรณ์เฉลี่ย
+    # คำนวณค่าเฉลี่ยของ Availability (%) แยกตาม Device โดยเฉลี่ยจากหลายเดือน
+    device_avg = df_group.groupby("Device")["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "Avg. Availability (%)"]
+    device_avg["เกณฑ์การประเมิน"] = pd.cut(device_avg["Avg. Availability (%)"], bins=bins, labels=labels)
+    device_avg["ผลการประเมิน"] = device_avg["เกณฑ์การประเมิน"].apply(evaluate_result)
+    #สรุปจำนวนเดือนทั้งหมด (ไม่แสดงในตาราง device_avg)
+    total_months = df_group["Month"].nunique()
+
+    ### ✅
+    st.info(f"✅ ประเมินผล Availability (%) รายอุปกรณ์เฉลี่ย {total_months} เดือน แยกตาม{flag}")
+    st.dataframe(device_avg)
+    
     # สรุปรวมทั้งหมด
     overall_avg = df["Availability (%)"].mean()
     total_row = pd.DataFrame({
@@ -306,22 +285,16 @@ def evaluate(df,bins,labels,flag,owner):
         "Availability (%)": [overall_avg],
         "เกณฑ์การประเมิน": [pd.cut([overall_avg], bins=bins, labels=labels)[0]],
         "ผลการประเมิน": [evaluate_result({"เกณฑ์การประเมิน": pd.cut([overall_avg], bins=bins, labels=labels)[0]})],
-        "จำนวน Device": [df["Device"].nunique()],
-        "เปอร์เซ็นต์ (%)": [100.0]
+        "จำนวน Device": [df["Device"].nunique()]
     })
-    summary_df = pd.concat([month_summary, total_row], ignore_index=True)
-    
+    summary_df = pd.concat([final_month_summary, total_row], ignore_index=True)
     summary_df["Device+Percent"] = summary_df.apply(
-        lambda row: f"{int(row['จำนวน Device']):,} ({row['เปอร์เซ็นต์ (%)']:.2f}%)", axis=1
+        lambda row: f"{int(row['จำนวน Device']):,}", axis=1
     )
-    pivot_df = df_addColMonth(df)
-    pivot_df.rename(columns={"Device": flag}, inplace=True)
+    return final_month_summary, device_avg
 
-    ### ✅
-    st.info(f"✅ สรุป Availability (%) รายเดือนของ{flag}")
-    st.write(pivot_df)
-
-
+    
+    
     def test():
         """
         # สรุปจำนวน Device ในแต่ละเกณฑ์
@@ -399,31 +372,30 @@ def evaluate(df,bins,labels,flag,owner):
             hole=0.4
         )
         fig2.update_traces(textinfo='percent+label')
-        """
     
-    # Bar Chart
-    fig1 = px.bar(
-        summary_df[summary_df["Month_str"] != "รวมทั้งหมด"],
-        x="Month_str",
-        y="จำนวน Device",
-        color="ผลการประเมิน",
-        text="Device+Percent",
-        barmode="group",
-        title="จำนวน Device ตามเกณฑ์การประเมิน (รายเดือน)"
-    )
+        # Bar Chart
+        fig1 = px.bar(
+            summary_df[summary_df["Month_str"] != "รวมทั้งหมด"],
+            x="Month_str",
+            y="จำนวน Device",
+            color="ผลการประเมิน",
+            text="Device+Percent",
+            barmode="group",
+            title="จำนวน Device ตามเกณฑ์การประเมิน (รายเดือน)"
+        )
 
-    # Pie Chart
-    fig2 = px.pie(
-        summary_df[summary_df["Month_str"] == "รวมทั้งหมด"],
-        names="ผลการประเมิน",
-        values="จำนวน Device",
-        title="สรุปผลรวมการประเมินทั้งหมด",
-        hole=0.4
-    )
-    fig2.update_traces(textinfo="percent+label")
+        # Pie Chart
+        fig2 = px.pie(
+            summary_df[summary_df["Month_str"] == "รวมทั้งหมด"],
+            names="ผลการประเมิน",
+            values="จำนวน Device",
+            title="สรุปผลรวมการประเมินทั้งหมด",
+            hole=0.4
+        )
+        fig2.update_traces(textinfo="percent+label")
 
-    show_df = summary_df[["Month_str", "Availability (%)", "เกณฑ์การประเมิน", "ผลการประเมิน", "Device+Percent"]]
-    return df, summary_df, fig1, fig2, show_df
+        show_df = summary_df[["Month_str", "Availability (%)", "เกณฑ์การประเมิน", "ผลการประเมิน", "Device+Percent"]]
+        """
 
 def range_ava(df,bins,labels):
     filtered_df["Availability Group"] = pd.cut(filtered_df["Availability (%)"], bins=bins_bar, labels=labels_bar, right=True)
@@ -502,7 +474,7 @@ if uploaded_files:
     flag = st.selectbox("🔍 เลือกระดับการวิเคราะห์", ["อุปกรณ์ FRTU", "สถานีไฟฟ้า"])
     title = flag  # เก็บไว้ใช้ในชื่อกราฟ
 
-    owner = st.selectbox("🔍 เลือกผู้ดูแล", ["PEA ดูแล", "Producer ดูแล"])
+    #owner = st.selectbox("🔍 เลือกผู้ดูแล", ["PEA ดูแล", "Producer ดูแล"])
     # เปลี่ยนชื่อคอลัมน์ Device ตาม flag
     
     #new_device_column_name = "PEA ดูแล" if owner == "PEA ดูแล" else "Producer ดูแล"
@@ -517,7 +489,13 @@ if uploaded_files:
         cols = "จำนวน " + title
         df_evaluate = df_combined.copy()
 
-        df_eva, summary_df, fig1, fig2, show_df = evaluate(df_evaluate,bins_eva,labels_eva,title,owner)
+        monthly_avg, device_avg = evaluate(df_evaluate,bins_eva,labels_eva,title)
+
+        # ✅ Pivot แสดง Availability รายเดือนทุกอุปกรณ์
+        pivot_df = df_addColMonth(df)
+        pivot_df.rename(columns={"Device": flag}, inplace=True)
+        st.info(f"✅ สรุป Availability (%) รายเดือนของ {flag}")
+        st.write(pivot_df)
         #st.plotly_chart(fig1)#st.plotly_chart(fig2)#st.dataframe(show_df)
         show_df.rename(columns={"Device+Percent": cols}, inplace=True)
         #st.markdown("### 🔹 ผลการประเมิน Availability (%) ของอุปกรณ์ในสถานีไฟฟ้า")#st.dataframe(show_df)
