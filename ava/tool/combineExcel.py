@@ -7,7 +7,7 @@ st.title("📁 รวมไฟล์ Excel หลายไฟล์เป็น�
 uploaded_files = st.file_uploader("อัปโหลดหลายไฟล์ Excel", type=["xlsx",'xlsm'], accept_multiple_files=True)
 
 if uploaded_files:
-    usecols = ["Field change time", "Message", "Device"]  # เปลี่ยนตามคอลัมน์ที่ต้องการ
+    usecols = ["Field change time", "Message", "Device", "Availability Period"]  # เปลี่ยนตามคอลัมน์ที่ต้องการ
     all_data = []
 
     for file in uploaded_files:
@@ -30,7 +30,7 @@ if uploaded_files:
         output.seek(0)
 
         st.success("✅ รวมข้อมูลและเซฟเป็นไฟล์ Excel เรียบร้อยแล้ว!")
-        st.dataframe(merged_df.head())
+        #st.dataframe(merged_df.head())
 
         # ปุ่มดาวน์โหลด
         st.download_button(

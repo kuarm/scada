@@ -353,7 +353,7 @@ def calculate_device_availability(df_filtered):
     device_online_duration.columns = ["Device", "Online Duration (seconds)"]
 
     #st.dataframe(df_filtered)
-    st.dataframe(device_online_duration)
+    #st.dataframe(device_online_duration)
 
     """ function DL
     def to_excel(df):
