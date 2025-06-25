@@ -287,10 +287,8 @@ def evaluate(df,bins,labels,flag):
         "ผลการประเมิน": [evaluate_result({"เกณฑ์การประเมิน": pd.cut([overall_avg], bins=bins, labels=labels)[0]})],
         "จำนวน Device": [df["Device"].nunique()]
     })
-    summary_df = pd.concat([final_month_summary, total_row], ignore_index=True)
-    summary_df["Device+Percent"] = summary_df.apply(
-        lambda row: f"{int(row['จำนวน Device']):,}", axis=1
-    )
+    #summary_df = pd.concat([final_month_summary, total_row], ignore_index=True)
+    #summary_df["Device+Percent"] = summary_df.apply(lambda row: f"{int(row['จำนวน Device']):,}", axis=1)
     return final_month_summary, device_avg
 
     
@@ -397,8 +395,8 @@ def evaluate(df,bins,labels,flag):
         show_df = summary_df[["Month_str", "Availability (%)", "เกณฑ์การประเมิน", "ผลการประเมิน", "Device+Percent"]]
         """
 
-def range_ava(df,bins,labels):
-    filtered_df["Availability Group"] = pd.cut(filtered_df["Availability (%)"], bins=bins_bar, labels=labels_bar, right=True)
+def range_ava(df,bins,labels,flag):
+    filtered_df["Availability Group"] = pd.cut(filtered_df["Availability (%)"], bins=bins, labels=labels, right=True)
     filtered_by_group = filtered_df[filtered_df["Availability Group"].isin(selected_group)]
     grouped_counts = filtered_by_group["Availability Group"].value_counts().sort_index().reset_index()
     grouped_counts.rename(columns={"Availability Group": "ช่วง % Availability","count": "จำนวนอุปกรณ์"}, inplace=True)
@@ -497,11 +495,11 @@ if uploaded_files:
         st.info(f"✅ สรุป Availability (%) รายเดือนของ {flag}")
         st.write(pivot_df)
         #st.plotly_chart(fig1)#st.plotly_chart(fig2)#st.dataframe(show_df)
-        show_df.rename(columns={"Device+Percent": cols}, inplace=True)
+        #show_df.rename(columns={"Device+Percent": cols}, inplace=True)
         #st.markdown("### 🔹 ผลการประเมิน Availability (%) ของอุปกรณ์ในสถานีไฟฟ้า")#st.dataframe(show_df)
         header_colors = ['#003366', '#006699', '#0099CC']   # สีหัวตาราง
         cell_colors = ['#E6F2FF', '#D9F2D9', '#FFF2CC']     # สีพื้นหลังเซลล์แต่ละคอลัมน์
-
+        """
         fig3 = go.Figure(data=[go.Table(
             header=dict(
                 values=[
@@ -535,7 +533,7 @@ if uploaded_files:
                 margin=dict(t=60, b=20)
         )
         #st.plotly_chart(fig3, use_container_width=True)
-
+        """
     elif func_select == 'Histogram':
         
         df_histogram = df_combined.copy()  # ป้องกัน SettingWithCopyWarning
@@ -549,13 +547,18 @@ if uploaded_files:
         #thai_months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
                     #'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
         #df_histogram["Month_name"] = df_histogram["Month_num"].apply(lambda x: thai_months[x - 1] if pd.notnull(x) else "")
+        # คำนวณค่าเฉลี่ย Availability (%) ต่ออุปกรณ์ พร้อมแนบชื่อผู้ดูแล
+        df_avg_device = df_histogram.groupby(["Device", "ผู้ดูแล"])["Availability (%)"].mean().reset_index()
 
         # กำหนดช่วงกลุ่ม Availability
         bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         labels = [f"{bins[i]}-{bins[i+1]} %" for i in range(len(bins)-1)]
         df_histogram["Availability (%)"] = df_histogram["Availability (%)"] * 100
+        df_avg_device["Availability (%)"] = df_avg_device["Availability (%)"] * 100
         df_histogram["Availability Group"] = pd.cut(df_histogram["Availability (%)"], bins=bins, labels=labels, right=True)
-        st.dataframe(df_histogram)
+        df_avg_device["Availability Group"] = pd.cut(df_avg_device["Availability (%)"], bins=bins, labels=labels, right=True)
+        st.dataframe(df_avg_device)
+        total_months = df_histogram["Month"].nunique()
         # --- สร้าง Selectbox สำหรับเลือกเดือน ---
         available_months = sorted(df_histogram["Month_year"].dropna().unique())
         selected_month = st.selectbox("📅 เลือกเดือนที่ต้องการดู Histogram", available_months)
@@ -570,6 +573,10 @@ if uploaded_files:
         # --- สร้าง Histogram ---
         grouped_counts = filtered_df["Availability Group"].value_counts().sort_index().reset_index()
         grouped_counts.columns = ["ช่วง % Availability", "จำนวน Device"]
+        #grouped_counts_avg = df_avg_device["Availability Group"].value_counts().sort_index().reset_index()
+        #grouped_counts_avg.columns = ["ช่วง % Availability", "จำนวน Device"]
+        # นับจำนวน Device ในแต่ละช่วง % แยกตามผู้ดูแล
+        grouped_counts_avg = df_avg_device.groupby(["ผู้ดูแล", "Availability Group"]).size().reset_index(name="จำนวน Device")
 
         """
         # Plot เป็นกราฟแยกตามเดือน
@@ -604,13 +611,39 @@ if uploaded_files:
         )
         fig.update_layout(
             xaxis_title="ช่วง % Availability",
-            yaxis_title="จำนวน Device",
-            showlegend=False,
+            yaxis_title="จำนวน{title}",
+            showlegend=True,                 # ✅ เปิดการแสดง Legend
+            legend_title="ผู้ดูแล"         # ✅ ชื่อของ Legend
         )
 
         fig.update_traces(texttemplate="%{text:,}", textposition="outside")
 
-        st.plotly_chart(fig, use_container_width=True)
+        #st.plotly_chart(fig, use_container_width=True)
+
+        fig_bar_avg = px.bar(
+            grouped_counts_avg,
+            x="Availability Group",
+            y="จำนวน Device",
+            color="ผู้ดูแล",
+            barmode="group",  # แยกกราฟแท่งแบบข้างกัน # หรือ "stack" ก็ได้
+            text="จำนวน Device",
+            title=f"📊 จำนวน{title} ในแต่ละช่วง % Availability เฉลี่ย {total_months} เดือน",
+            category_orders={"Availability Group": labels},  # เรียงช่วงจากน้อยไปมาก
+            color_discrete_sequence=px.colors.qualitative.Set2
+            #color_discrete_sequence=[
+            #    "#FF0000", "#FF4000", "#FF8000", "#FFBF00", "#FFFF00",
+            #    "#BFFF00", "#80FF00", "#40FF00", "#00FF00", "#00CC00"
+            #]
+        )
+        fig_bar_avg.update_layout(
+            xaxis_title="ช่วง % Availability",
+            yaxis_title=f"จำนวน{title}",
+            showlegend=True,
+            legend_title="ผู้ดูแล" # ✅ ชื่อของ Legend
+        )
+        fig_bar_avg.update_traces(texttemplate="%{text:,}", textposition="outside")
+
+        st.plotly_chart(fig_bar_avg, use_container_width=True)
 
         typeplot = "Line"
         plot(df_combined,typeplot)
@@ -688,6 +721,7 @@ if uploaded_files:
     elif func_select == 'สถานะ':
         st.write("n/a")
     elif func_select == 'เปรียบเทียบทุกเดือน':
+        """
         # ---- Upload and Merge ----
         uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
 
@@ -780,7 +814,9 @@ if uploaded_files:
             st.plotly_chart(fig_line, use_container_width=True)
     else:
         st.warning("🚨 ไม่ได้เลือก function")
-
+    """
+        df_histogram = df_combined.copy()
+    
 """   
 uploaded_file = st.file_uploader("📥 อัปโหลดไฟล์ Excel หรือ CSV", type=["xlsx", "csv"])
 if uploaded_file:
