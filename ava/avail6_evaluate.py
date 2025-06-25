@@ -287,10 +287,8 @@ def evaluate(df,bins,labels,flag):
         "ผลการประเมิน": [evaluate_result({"เกณฑ์การประเมิน": pd.cut([overall_avg], bins=bins, labels=labels)[0]})],
         "จำนวน Device": [df["Device"].nunique()]
     })
-    summary_df = pd.concat([final_month_summary, total_row], ignore_index=True)
-    summary_df["Device+Percent"] = summary_df.apply(
-        lambda row: f"{int(row['จำนวน Device']):,}", axis=1
-    )
+    #summary_df = pd.concat([final_month_summary, total_row], ignore_index=True)
+    #summary_df["Device+Percent"] = summary_df.apply(lambda row: f"{int(row['จำนวน Device']):,}", axis=1)
     return final_month_summary, device_avg
 
     
