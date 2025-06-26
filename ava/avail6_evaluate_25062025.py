@@ -447,6 +447,345 @@ def get_color(label):
     except:
         return "gray"
 
+def ranking(df):
+    # ตัวอย่าง: Ranking แยกตาม "ผู้ดูแล"
+    df_group = df[df["ผู้ดูแล"] == "PEA ดูแล"]  # หรือ "Producer ดูแล"
+
+    device_avg = df_group.groupby("Device")["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "Avg Availability (%)"]
+    device_avg["Rank"] = device_avg["Avg Availability (%)"].rank(ascending=False, method="min").astype(int)
+    device_avg = device_avg.sort_values(by="Rank").reset_index(drop=True)
+
+    st.info("📈 จัดอันดับ Availability (%) ของ PEA ดูแล")
+    st.dataframe(device_avg)
+
+    # คำนวณค่าเฉลี่ยของ Availability (%) แยกตาม Device
+    device_avg = df.groupby("Device")["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "Avg Availability (%)"]
+
+    # จัดอันดับ (อันดับ 1 คือค่ามากสุด)
+    device_avg["Rank"] = device_avg["Avg Availability (%)"].rank(ascending=False, method="min").astype(int)
+
+    # เรียงลำดับใหม่เพื่อแสดงจากอันดับ 1 ลงมา
+    device_avg = device_avg.sort_values(by="Rank").reset_index(drop=True)
+
+    device_avg["Avg Availability (%)"] = device_avg["Avg Availability (%)"] * 100
+
+    # แสดงตาราง Ranking
+    st.info("📈 ตารางจัดอันดับ Availability (%) เฉลี่ย รายอุปกรณ์")
+    st.dataframe(device_avg)
+
+def rank_availability(df):
+    st.subheader("📊 การจัดอันดับ Availability (%) เฉลี่ย (แยกตามผู้ดูแล)")
+
+    # ✅ เตรียมกลุ่ม
+    for owner in ["PEA ดูแล", "Producer ดูแล"]:
+        df_group = df[df["ผู้ดูแล"] == owner].copy()
+
+        if df_group.empty:
+            st.warning(f"⚠️ ไม่พบข้อมูลของกลุ่ม '{owner}'")
+            continue
+
+        # ✅ คำนวณ Avg. Availability (%) ต่อ Device
+        device_avg = df_group.groupby("Device")["Availability (%)"].mean().reset_index()
+        device_avg.columns = ["Device", "Avg Availability (%)"]
+
+        # ✅ จัดอันดับ
+        device_avg["Rank"] = device_avg["Avg Availability (%)"].rank(method="min", ascending=False).astype(int)
+
+        # ✅ เรียงตามอันดับ
+        device_avg = device_avg.sort_values(by="Rank").reset_index(drop=True)
+
+        # ✅ แสดงตาราง
+        st.markdown(f"### 🏆 อันดับ Availability (%) เฉลี่ย ของกลุ่ม {owner}")
+        st.dataframe(device_avg)
+
+def rank_and_plot_top10(df):
+    st.subheader("🏆 อันดับ Top 10 Availability (%) เฉลี่ย แยกตามผู้ดูแล")
+
+    for owner in ["PEA ดูแล", "Producer ดูแล"]:
+        df_group = df[df["ผู้ดูแล"] == owner].copy()
+
+        if df_group.empty:
+            st.warning(f"⚠️ ไม่พบข้อมูลของกลุ่ม '{owner}'")
+            continue
+
+        # ✅ คำนวณค่าเฉลี่ย
+        device_avg = df_group.groupby("Device")["Availability (%)"].mean().reset_index()
+        device_avg.columns = ["Device", "Avg Availability (%)"]
+
+        # ✅ จัดอันดับ
+        device_avg["Rank"] = device_avg["Avg Availability (%)"].rank(method="min", ascending=False).astype(int)
+
+        # ✅ Top 10
+        top10 = device_avg.sort_values(by="Rank").head(10)
+
+        # ✅ วาดกราฟ Plotly
+        fig = px.bar(
+            top10.sort_values(by="Avg Availability (%)"),  # เรียงจากล่างขึ้นบน
+            x="Avg Availability (%)",
+            y="Device",
+            orientation="h",
+            text="Avg Availability (%)",
+            title=f"📊 Top 10 Availability (%) เฉลี่ย ({owner})",
+            color="Avg Availability (%)",
+            color_continuous_scale="Greens" if "PEA" in owner else "Blues"
+        )
+
+        fig.update_layout(
+            xaxis_title="Availability (%)",
+            yaxis_title="Device",
+            yaxis=dict(autorange="reversed"),  # ให้ Rank 1 อยู่บนสุด
+            height=500,
+            margin=dict(t=50, b=50)
+        )
+
+        fig.update_traces(texttemplate="%{text:.2f}%", textposition="outside")
+        st.plotly_chart(fig, use_container_width=True)
+
+def rank_plot_top10_combined(df):
+    st.subheader("🏆 อันดับ Top 10 Availability (%) เฉลี่ย (รวมทุกผู้ดูแล)")
+
+    # ✅ คำนวณค่าเฉลี่ยรายอุปกรณ์
+    device_avg = df.groupby(["Device", "ผู้ดูแล"])["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "ผู้ดูแล", "Avg Availability (%)"]
+
+    # ✅ จัดอันดับรวม
+    device_avg["Rank"] = device_avg["Avg Availability (%)"].rank(method="min", ascending=False).astype(int)
+
+    # ✅ เลือก Top 10
+    top10_combined = device_avg.sort_values(by="Rank").head(10)
+
+    # ✅ วาดกราฟ
+    fig = px.bar(
+        top10_combined.sort_values(by="Avg Availability (%)"),
+        x="Avg Availability (%)",
+        y="Device",
+        color="ผู้ดูแล",
+        orientation="h",
+        text="Avg Availability (%)",
+        title="📊 Top 10 Availability (%) เฉลี่ย (รวมทุกผู้ดูแล)",
+        color_discrete_map={
+            "PEA ดูแล": "#2ECC71",      # เขียว
+            "Producer ดูแล": "#3498DB"  # น้ำเงิน
+        }
+    )
+
+    fig.update_layout(
+        xaxis_title="Availability (%)",
+        yaxis_title="Device",
+        yaxis=dict(autorange="reversed"),
+        height=500,
+        margin=dict(t=50, b=50)
+    )
+
+    fig.update_traces(texttemplate="%{text:.2f}%", textposition="outside")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def bar_compare_caretakers(df):
+    st.subheader("📊 เปรียบเทียบ Availability (%) แยกตามผู้ดูแล")
+
+    # ✅ คำนวณค่าเฉลี่ยรายอุปกรณ์ + ผู้ดูแล
+    device_avg = df.groupby(["Device", "ผู้ดูแล"])["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "ผู้ดูแล", "Avg Availability (%)"]
+
+    # ✅ วาดกราฟ Bar เปรียบเทียบ
+    fig = px.bar(
+        device_avg,
+        x="Device",
+        y="Avg Availability (%)",
+        color="ผู้ดูแล",
+        barmode="group",  # แสดงเป็นคู่แท่ง
+        text="Avg Availability (%)",
+        title="📊 เปรียบเทียบ Availability (%) แยกตามผู้ดูแล (Grouped Bar)",
+        color_discrete_map={
+            "PEA ดูแล": "#2ECC71",
+            "Producer ดูแล": "#3498DB"
+        }
+    )
+
+    fig.update_layout(
+        xaxis_title="Device",
+        yaxis_title="Availability (%)",
+        xaxis_tickangle=-45,
+        height=600,
+        margin=dict(t=60, b=80)
+    )
+
+    fig.update_traces(texttemplate="%{text:.2f}%", textposition="outside")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def bar_stacked_top10(df):
+    st.subheader("📊 Top 10 Availability (%) เฉลี่ยสูงสุด (Stacked Bar เปรียบเทียบผู้ดูแล)")
+    
+    # ✅ คำนวณค่าเฉลี่ย Availability (%) ต่ออุปกรณ์ + ผู้ดูแล
+    device_avg = df.groupby(["Device", "ผู้ดูแล"])["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "ผู้ดูแล", "Avg Availability (%)"]
+
+    # ✅ รวมเป็นค่าเฉลี่ยรวม per Device (เพื่อจัดอันดับ Top 10)
+    top_devices = device_avg.groupby("Device")["Avg Availability (%)"].mean().nlargest(10).index
+
+    # ✅ กรองเฉพาะ Top 10
+    df_top10 = device_avg[device_avg["Device"].isin(top_devices)]
+    df_top10["Avg Availability (%)"] = df_top10["Avg Availability (%)"] * 100
+    # ✅ วาดกราฟ Stacked Bar
+    fig = px.bar(
+        df_top10,
+        x="Device",
+        y="Avg Availability (%)",
+        color="ผู้ดูแล",
+        barmode="stack",
+        text="Avg Availability (%)",
+        title="📊 Top 10 Availability (%) สูงสุด แยกตามผู้ดูแล (Stacked Bar)",
+        color_discrete_map={
+            "PEA ดูแล": "#2ECC71",
+            "Producer ดูแล": "#3498DB"
+        }
+    )
+
+    fig.update_layout(
+        xaxis_title="Device",
+        yaxis_title="Availability (%)",
+        xaxis_tickangle=-45,
+        height=600,
+        margin=dict(t=60, b=80)
+    )
+
+    fig.update_traces(texttemplate="%{text:.2f}%", textposition="outside")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def bar_grouped_top10(df):
+    st.subheader("📊 Top 10 Availability (%) เฉลี่ยสูงสุด (Grouped Bar เปรียบเทียบผู้ดูแล)")
+
+    # ✅ 1. คำนวณค่าเฉลี่ย Availability (%) แยกตาม Device + ผู้ดูแล
+    device_avg = df.groupby(["Device", "ผู้ดูแล"])["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "ผู้ดูแล", "Avg Availability (%)"]
+
+    # ✅ 2. หา Top 10 Device ที่มีค่าเฉลี่ยรวมสูงสุด
+    top_devices = device_avg.groupby("Device")["Avg Availability (%)"].mean().nlargest(10).index
+
+    # ✅ 3. กรองเฉพาะ Device เหล่านั้น
+    df_top10 = device_avg[device_avg["Device"].isin(top_devices)]
+
+    # ✅ 4. วาด Grouped Bar
+    fig = px.bar(
+        df_top10,
+        x="Device",
+        y="Avg Availability (%)",
+        color="ผู้ดูแล",
+        barmode="group",
+        text="Avg Availability (%)",
+        title="📊 Top 10 Availability (%) สูงสุด แยกตามผู้ดูแล (Grouped Bar)",
+        color_discrete_map={
+            "PEA ดูแล": "#2ECC71",
+            "Producer ดูแล": "#3498DB"
+        }
+    )
+
+    fig.update_layout(
+        xaxis_title="Device",
+        yaxis_title="Availability (%)",
+        xaxis_tickangle=-45,
+        height=600,
+        margin=dict(t=60, b=80)
+    )
+
+    fig.update_traces(texttemplate="%{text:.2f}%", textposition="outside")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def show_top10_table(df):
+    st.subheader("📋 ตารางอันดับ Availability (%) เฉลี่ยสูงสุดและต่ำสุด")
+
+    # ✅ คำนวณค่าเฉลี่ย Availability (%) แยกตาม Device
+    device_avg = df.groupby(["Device", "ผู้ดูแล"])["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "ผู้ดูแล", "Avg Availability (%)"]
+
+    # ✅ จัดอันดับ
+    device_avg_sorted = device_avg.sort_values(by="Avg Availability (%)", ascending=False).reset_index(drop=True)
+    device_avg_sorted["อันดับ"] = device_avg_sorted.index + 1
+
+    # ✅ แสดง Top 10 สูงสุด
+    st.markdown("### 🟢 Top 10 อันดับสูงสุด")
+    st.dataframe(device_avg_sorted.head(10).style.format({"Avg Availability (%)": "{:.2f}"}), use_container_width=True)
+
+    # ✅ แสดง Top 10 ต่ำสุด
+    st.markdown("### 🔴 Top 10 อันดับต่ำสุด")
+    st.dataframe(device_avg_sorted.tail(10).sort_values("Avg Availability (%)").style.format({"Avg Availability (%)": "{:.2f}"}), use_container_width=True)
+
+def show_top10_combined_table(df):
+    st.subheader("📋 ตารางรวมอันดับ Availability (%) เฉลี่ยสูงสุดและต่ำสุด")
+
+    # ✅ คำนวณค่าเฉลี่ย Availability (%) แยกตาม Device
+    device_avg = df.groupby(["Device", "ผู้ดูแล"])["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "ผู้ดูแล", "Avg Availability (%)"]
+
+    # ✅ จัดอันดับ
+    device_avg_sorted = device_avg.sort_values(by="Avg Availability (%)", ascending=False).reset_index(drop=True)
+    device_avg_sorted["อันดับ (รวมทั้งหมด)"] = device_avg_sorted.index + 1
+
+    # ✅ แยก Top 10 สูงสุด
+    top10 = device_avg_sorted.head(10).copy()
+    top10["ประเภท"] = "🔼 Top 10 สูงสุด"
+
+    # ✅ แยก Top 10 ต่ำสุด
+    bottom10 = device_avg_sorted.tail(10).copy()
+    bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
+
+    # ✅ รวมตาราง
+    combined_df = pd.concat([top10, bottom10], ignore_index=True)
+
+    # ✅ เรียงลำดับใหม่โดยเอา Top 10 อยู่ด้านบน
+    combined_df = combined_df.sort_values(by=["ประเภท", "Avg Availability (%)"], ascending=[True, False])
+
+    # ✅ แสดงตาราง
+    st.dataframe(combined_df[["อันดับ (รวมทั้งหมด)", "Device", "ผู้ดูแล", "Avg Availability (%)", "ประเภท"]].style.format({
+        "Avg Availability (%)": "{:.2f}"
+    }), use_container_width=True)
+
+def show_top10_combined_table_(df):
+    st.subheader("📋 ตารางรวมอันดับ Availability (%) เฉลี่ยสูงสุดและต่ำสุด")
+
+    # ✅ คำนวณค่าเฉลี่ย Availability (%) แยกตาม Device
+    device_avg = df.groupby(["Device", "ผู้ดูแล"])["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "ผู้ดูแล", "Avg Availability (%)"]
+
+    # ✅ แยก Device ที่ Avg = 0 ออก
+    excluded_zero_df = device_avg[device_avg["Avg Availability (%)"] == 0]
+    device_avg = device_avg[device_avg["Avg Availability (%)"] > 0]
+
+    device_avg["Avg Availability (%)"] = device_avg["Avg Availability (%)"] * 100
+    
+    # ✅ จัดอันดับ
+    device_avg_sorted = device_avg.sort_values(by="Avg Availability (%)", ascending=False).reset_index(drop=True)
+    device_avg_sorted["อันดับ (รวมทั้งหมด)"] = device_avg_sorted.index + 1
+
+    # ✅ แยก Top 10 สูงสุด
+    top10 = device_avg_sorted.head(10).copy()
+    top10["ประเภท"] = "🔼 Top 10 สูงสุด"
+
+    # ✅ แยก Bottom 10 ต่ำสุด
+    bottom10 = device_avg_sorted.tail(10).copy()
+    bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
+
+    # ✅ รวมตาราง
+    combined_df = pd.concat([top10, bottom10], ignore_index=True)
+    combined_df = combined_df.sort_values(by=["ประเภท", "Avg Availability (%)"], ascending=[True, False])
+
+    # ✅ แสดงตาราง
+    st.dataframe(
+        combined_df[["อันดับ (รวมทั้งหมด)", "Device", "ผู้ดูแล", "Avg Availability (%)", "ประเภท"]]
+        .style.format({"Avg Availability (%)": "{:.10f}"}),
+        use_container_width=True
+    )
+
+    # ✅ แสดงหมายเหตุ
+    num_excluded = len(excluded_zero_df)
+    if num_excluded > 0:
+        st.markdown(f"> ℹ️ **หมายเหตุ**: ตัดอุปกรณ์ที่มี Avg Availability = 0 ออกจากการจัดอันดับจำนวน **{num_excluded} รายการ**")
 
 # ---- Upload and Merge ----
 uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
@@ -471,7 +810,8 @@ if uploaded_files:
     option_submenu = ['ระบบจำหน่ายสายส่ง','สถานีไฟฟ้า']
     flag = st.selectbox("🔍 เลือกระดับการวิเคราะห์", ["อุปกรณ์ FRTU", "สถานีไฟฟ้า"])
     title = flag  # เก็บไว้ใช้ในชื่อกราฟ
-
+    show_top10_combined_table_(df_combined)
+    
     #owner = st.selectbox("🔍 เลือกผู้ดูแล", ["PEA ดูแล", "Producer ดูแล"])
     # เปลี่ยนชื่อคอลัมน์ Device ตาม flag
     
@@ -720,6 +1060,7 @@ if uploaded_files:
         st.plotly_chart(fig11, use_container_width=True)
     elif func_select == 'สถานะ':
         st.write("n/a")
+        
     elif func_select == 'เปรียบเทียบทุกเดือน':
         """
         # ---- Upload and Merge ----
