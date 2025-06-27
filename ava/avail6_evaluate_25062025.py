@@ -839,7 +839,7 @@ def plot_top_bottom_by_owner(df):
     # เตรียมข้อมูลพื้นฐาน
     df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
     df = df[df["Availability (%)"] > 0]  # ตัดค่า 0 ออก
-
+    df["Availability (%)"] = df["Availability (%)"] * 100
     owners = df["ผู้ดูแล"].dropna().unique()
 
     for owner in owners:
@@ -879,6 +879,140 @@ def plot_top_bottom_by_owner(df):
 
         st.plotly_chart(fig, use_container_width=True)
 
+def plot_top_bottom_faceted(df):
+    # แปลงให้เป็นตัวเลข และตัดอุปกรณ์ที่ค่า Availability = 0
+    df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
+    df = df[df["Availability (%)"] > 0]
+
+    df_result = []
+
+    for owner in df["ผู้ดูแล"].dropna().unique():
+        df_owner = df[df["ผู้ดูแล"] == owner]
+        device_avg = df_owner.groupby("Device")["Availability (%)"].mean().reset_index()
+        device_avg.columns = ["Device", "Avg Availability (%)"]
+        device_avg["ผู้ดูแล"] = owner
+
+        top10 = device_avg.nlargest(10, "Avg Availability (%)").copy()
+        top10["ประเภท"] = "🔼 Top 10 สูงสุด"
+
+        bottom10 = device_avg.nsmallest(10, "Avg Availability (%)").copy()
+        bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
+
+        df_result.append(pd.concat([top10, bottom10]))
+
+    df_plot = pd.concat(df_result)
+
+    # วาดกราฟรวมโดยใช้ facet_col
+    fig = px.bar(
+        df_plot,
+        x="Avg Availability (%)",
+        y="Device",
+        color="ประเภท",
+        facet_col="ผู้ดูแล",
+        orientation="h",
+        text="Avg Availability (%)",
+        title="📊 เปรียบเทียบ Top/Bottom 10 Availability (%) ระหว่างผู้ดูแล",
+        color_discrete_map={
+            "🔼 Top 10 สูงสุด": "#27ae60",
+            "🔽 Bottom 10 ต่ำสุด": "#c0392b"
+        },
+        height=700
+    )
+
+    fig.update_layout(
+        showlegend=True,
+        yaxis=dict(categoryorder='total ascending')
+    )
+    fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def plot_top_bottom_facet_row(df):
+    # แปลงให้เป็นตัวเลข และกรองข้อมูล Availability = 0
+    df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
+    df = df[df["Availability (%)"] > 0]
+
+    df_result = []
+
+    for owner in df["ผู้ดูแล"].dropna().unique():
+        df_owner = df[df["ผู้ดูแล"] == owner]
+        device_avg = df_owner.groupby("Device")["Availability (%)"].mean().reset_index()
+        device_avg.columns = ["Device", "Avg Availability (%)"]
+        device_avg["ผู้ดูแล"] = owner
+
+        top10 = device_avg.nlargest(10, "Avg Availability (%)").copy()
+        top10["ประเภท"] = "🔼 Top 10 สูงสุด"
+
+        bottom10 = device_avg.nsmallest(10, "Avg Availability (%)").copy()
+        bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
+
+        df_result.append(pd.concat([top10, bottom10]))
+
+    df_plot = pd.concat(df_result)
+
+    # วาดกราฟแบบ facet_row
+    fig = px.bar(
+        df_plot,
+        x="Avg Availability (%)",
+        y="Device",
+        color="ประเภท",
+        facet_row="ผู้ดูแล",  # 🔸 เปลี่ยนจาก facet_col → facet_row
+        orientation="h",
+        text="Avg Availability (%)",
+        title="📊 เปรียบเทียบ Top/Bottom 10 Availability (%) แยกตามผู้ดูแล (แนวตั้ง)",
+        color_discrete_map={
+            "🔼 Top 10 สูงสุด": "#27ae60",
+            "🔽 Bottom 10 ต่ำสุด": "#c0392b"
+        },
+        height=900
+    )
+
+    fig.update_layout(
+        showlegend=True,
+        yaxis=dict(categoryorder='total ascending'),
+        margin=dict(t=60, b=40)
+    )
+    fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def summarize_top_bottom_table(df):
+    df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
+    df["Availability (%)"] = df["Availability (%)"] * 100
+    # กรองข้อมูลที่ Availability > 0
+    df_valid = df[df["Availability (%)"] > 0].copy()
+    df_zero = df[df["Availability (%)"] == 0].copy()
+
+    summary_tables = []
+
+    for owner in df_valid["ผู้ดูแล"].dropna().unique():
+        df_owner = df_valid[df_valid["ผู้ดูแล"] == owner]
+        device_avg = df_owner.groupby("Device")["Availability (%)"].mean().reset_index()
+        device_avg.columns = ["Device", "Avg Availability (%)"]
+        device_avg["ผู้ดูแล"] = owner
+
+        # Top 10
+        top10 = device_avg.nlargest(10, "Avg Availability (%)").copy()
+        top10["ประเภท"] = "🔼 Top 10 สูงสุด"
+
+        # Bottom 10
+        bottom10 = device_avg.nsmallest(10, "Avg Availability (%)").copy()
+        bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
+
+        summary_tables.append(pd.concat([top10, bottom10]))
+
+    df_summary = pd.concat(summary_tables, ignore_index=True)
+    
+    # เรียงให้อ่านง่าย
+    df_summary = df_summary.sort_values(by=["ผู้ดูแล", "ประเภท", "Avg Availability (%)"], ascending=[True, False, False])
+
+    # แสดงผลใน Streamlit
+    st.info("📋 ตารางสรุป Top/Bottom 10 ของแต่ละผู้ดูแล")
+    st.dataframe(df_summary.style.format({"Avg Availability (%)": "{:.5f}%"}), use_container_width=True)
+
+    if not df_zero.empty:
+        st.warning(f"⚠️ พบ Device จำนวน {df_zero['Device'].nunique()} รายการ ที่มีค่า Avg Availability = 0 และไม่ถูกนำมาจัดอันดับ")
+
 # ---- Upload and Merge ----
 uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
 
@@ -902,7 +1036,7 @@ if uploaded_files:
     option_submenu = ['ระบบจำหน่ายสายส่ง','สถานีไฟฟ้า']
     flag = st.selectbox("🔍 เลือกระดับการวิเคราะห์", ["อุปกรณ์ FRTU", "สถานีไฟฟ้า"])
     title = flag  # เก็บไว้ใช้ในชื่อกราฟ
-    plot_top_bottom_by_owner(df_combined)
+    summarize_top_bottom_table(df_combined)
     
     #owner = st.selectbox("🔍 เลือกผู้ดูแล", ["PEA ดูแล", "Producer ดูแล"])
     # เปลี่ยนชื่อคอลัมน์ Device ตาม flag
