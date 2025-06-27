@@ -758,7 +758,7 @@ def show_top10_combined_table_(df):
     device_avg = device_avg[device_avg["Avg Availability (%)"] > 0]
 
     device_avg["Avg Availability (%)"] = device_avg["Avg Availability (%)"] * 100
-    
+
     # ✅ จัดอันดับ
     device_avg_sorted = device_avg.sort_values(by="Avg Availability (%)", ascending=False).reset_index(drop=True)
     device_avg_sorted["อันดับ (รวมทั้งหมด)"] = device_avg_sorted.index + 1
@@ -787,6 +787,98 @@ def show_top10_combined_table_(df):
     if num_excluded > 0:
         st.markdown(f"> ℹ️ **หมายเหตุ**: ตัดอุปกรณ์ที่มี Avg Availability = 0 ออกจากการจัดอันดับจำนวน **{num_excluded} รายการ**")
 
+def plot_top_bottom_chart(df):
+    # คำนวณค่าเฉลี่ย Availability
+    device_avg = df.groupby(["Device", "ผู้ดูแล"])["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "ผู้ดูแล", "Avg Availability (%)"]
+
+    # แยก Device ที่ Avg = 0 ออก
+    device_avg = device_avg[device_avg["Avg Availability (%)"] > 0]
+
+    # จัดอันดับ
+    device_avg_sorted = device_avg.sort_values(by="Avg Availability (%)", ascending=False).reset_index(drop=True)
+    device_avg_sorted["อันดับ"] = device_avg_sorted.index + 1
+
+    # Top และ Bottom
+    top10 = device_avg_sorted.head(10).copy()
+    top10["ประเภท"] = "🔼 Top 10 สูงสุด"
+    
+    bottom10 = device_avg_sorted.tail(10).copy()
+    bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
+
+    # รวม
+    combined_df = pd.concat([top10, bottom10], ignore_index=True)
+
+    # สร้างกราฟแนวนอน เปรียบเทียบ
+    fig = px.bar(
+        combined_df,
+        x="Avg Availability (%)",
+        y="Device",
+        color="ผู้ดูแล",
+        facet_row="ประเภท",  # แยกกราฟบนล่าง
+        orientation="h",
+        text="Avg Availability (%)",
+        title="📊 เปรียบเทียบ Top 10 และ Bottom 10 ของ Availability (%) เฉลี่ย (แยกตามผู้ดูแล)",
+        color_discrete_map={
+            "PEA ดูแล": "#1f77b4",
+            "Producer ดูแล": "#ff7f0e"
+        }
+    )
+
+    fig.update_layout(
+        height=700,
+        showlegend=True,
+        yaxis=dict(categoryorder='total ascending'),
+        margin=dict(t=60, b=40)
+    )
+    fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def plot_top_bottom_by_owner(df):
+    # เตรียมข้อมูลพื้นฐาน
+    df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
+    df = df[df["Availability (%)"] > 0]  # ตัดค่า 0 ออก
+
+    owners = df["ผู้ดูแล"].dropna().unique()
+
+    for owner in owners:
+        df_owner = df[df["ผู้ดูแล"] == owner]
+        device_avg = df_owner.groupby("Device")["Availability (%)"].mean().reset_index()
+        device_avg.columns = ["Device", "Avg Availability (%)"]
+        device_avg = device_avg.sort_values(by="Avg Availability (%)", ascending=False).reset_index(drop=True)
+
+        # แยก Top / Bottom
+        top10 = device_avg.head(10).copy()
+        top10["ประเภท"] = "🔼 Top 10 สูงสุด"
+        bottom10 = device_avg.tail(10).copy()
+        bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
+        df_plot = pd.concat([top10, bottom10])
+
+        # วาดกราฟแนวนอน
+        fig = px.bar(
+            df_plot,
+            x="Avg Availability (%)",
+            y="Device",
+            color="ประเภท",
+            orientation="h",
+            text="Avg Availability (%)",
+            title=f"📊 อันดับ Availability (%) เฉลี่ยของอุปกรณ์ ({owner})",
+            color_discrete_map={
+                "🔼 Top 10 สูงสุด": "#2ecc71",
+                "🔽 Bottom 10 ต่ำสุด": "#e74c3c"
+            }
+        )
+
+        fig.update_layout(
+            height=600,
+            yaxis=dict(categoryorder='total ascending'),
+            showlegend=True
+        )
+        fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+
+        st.plotly_chart(fig, use_container_width=True)
+
 # ---- Upload and Merge ----
 uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
 
@@ -810,7 +902,7 @@ if uploaded_files:
     option_submenu = ['ระบบจำหน่ายสายส่ง','สถานีไฟฟ้า']
     flag = st.selectbox("🔍 เลือกระดับการวิเคราะห์", ["อุปกรณ์ FRTU", "สถานีไฟฟ้า"])
     title = flag  # เก็บไว้ใช้ในชื่อกราฟ
-    show_top10_combined_table_(df_combined)
+    plot_top_bottom_by_owner(df_combined)
     
     #owner = st.selectbox("🔍 เลือกผู้ดูแล", ["PEA ดูแล", "Producer ดูแล"])
     # เปลี่ยนชื่อคอลัมน์ Device ตาม flag
