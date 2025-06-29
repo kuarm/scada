@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+from io import BytesIO
 
 def plot_avg(df):
     # --- เตรียมข้อมูล ---
@@ -926,8 +927,44 @@ def plot_top_bottom_faceted(df):
     fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
 
     st.plotly_chart(fig, use_container_width=True)
+  
+def summarize_top_bottom_table(df):
+    df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
 
-def plot_top_bottom_facet_row(df):
+    # กรองข้อมูลที่ Availability > 0
+    df_valid = df[df["Availability (%)"] > 0].copy()
+    df_zero = df[df["Availability (%)"] == 0].copy()
+
+    summary_tables = []
+
+    for owner in df_valid["ผู้ดูแล"].dropna().unique():
+        df_owner = df_valid[df_valid["ผู้ดูแล"] == owner]
+        device_avg = df_owner.groupby("Device")["Availability (%)"].mean().reset_index()
+        device_avg.columns = ["Device", "Avg Availability (%)"]
+        device_avg["ผู้ดูแล"] = owner
+
+        # Top 10
+        top10 = device_avg.nlargest(10, "Avg Availability (%)").copy()
+        top10["ประเภท"] = "🔼 Top 10 สูงสุด"
+
+        # Bottom 10
+        bottom10 = device_avg.nsmallest(10, "Avg Availability (%)").copy()
+        bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
+
+        summary_tables.append(pd.concat([top10, bottom10]))
+
+    df_summary = pd.concat(summary_tables, ignore_index=True)
+    
+    # เรียงให้อ่านง่าย
+    df_summary = df_summary.sort_values(by=["ผู้ดูแล", "ประเภท", "Avg Availability (%)"], ascending=[True, False, False])
+
+    # แสดงผลใน Streamlit
+    st.info("📋 ตารางสรุป Top/Bottom 10 ของแต่ละผู้ดูแล")
+    st.dataframe(df_summary.style.format({"Avg Availability (%)": "{:.2f}"}), use_container_width=True)
+
+    if not df_zero.empty:
+        st.warning(f"⚠️ พบ Device จำนวน {df_zero['Device'].nunique()} รายการ ที่มีค่า Avg Availability = 0 และไม่ถูกนำมาจัดอันดับ")
+        
     # แปลงให้เป็นตัวเลข และกรองข้อมูล Availability = 0
     df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
     df = df[df["Availability (%)"] > 0]
@@ -976,7 +1013,7 @@ def plot_top_bottom_facet_row(df):
 
     st.plotly_chart(fig, use_container_width=True)
 
-def summarize_top_bottom_table(df):
+def summarize_top_bottom_table_(df):
     df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
     df["Availability (%)"] = df["Availability (%)"] * 100
     # กรองข้อมูลที่ Availability > 0
@@ -1013,6 +1050,83 @@ def summarize_top_bottom_table(df):
     if not df_zero.empty:
         st.warning(f"⚠️ พบ Device จำนวน {df_zero['Device'].nunique()} รายการ ที่มีค่า Avg Availability = 0 และไม่ถูกนำมาจัดอันดับ")
 
+    
+def summarize_top_bottom_overall(df):
+    df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
+    df["Availability (%)"] = df["Availability (%)"] * 100
+    
+    # กรองข้อมูลที่ Availability > 0
+    df_valid = df[df["Availability (%)"] > 0].copy()
+    df_zero = df[df["Availability (%)"] == 0].copy()
+    
+    # คำนวณค่าเฉลี่ยตาม Device
+    device_avg = df_valid.groupby("Device")["Availability (%)"].mean().reset_index()
+    device_avg.columns = ["Device", "Avg. Availability (%)"]
+
+     # รวมข้อมูลอื่น ๆ ที่ต้องการ (ใช้ข้อมูลล่าสุดของแต่ละ Device)
+    latest_info = df_valid.sort_values("Month").drop_duplicates(subset="Device", keep="last")[
+        ["Device", "Description", "สถานที่", "การไฟฟ้า", "ผู้ดูแล"]
+    ]
+
+    device_avg = device_avg.merge(latest_info, on="Device", how="left")
+
+    device_avg = device_avg.sort_values("Avg. Availability (%)", ascending=False).reset_index(drop=True)
+    #device_avg.insert(0, "อันดับ", range(1, len(device_avg) + 1))
+
+    # สรุป Top 10 และ Bottom 10
+    top10 = device_avg.head(5).copy()
+    top10["ประเภท"] = "🔼 Top 10 สูงสุด"
+    bottom10 = device_avg.tail(10).copy()
+    bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
+
+    df_summary = pd.concat([top10, bottom10], ignore_index=True)
+
+    # จัดเรียงจากมากไปน้อย
+    #df_summary = df_summary.sort_values(by="Avg. Availability (%)", ascending=False)
+    #df_summary = df_summary.sort_values("Avg. Availability (%)", ascending=False).reset_index(drop=True)
+    df_summary.insert(0, "อันดับ", range(1, len(df_summary) + 1))
+    # จัดเรียงใหม่ให้ Top และ Bottom แยกกลุ่ม และเรียงตามอันดับ
+    #df_summary = df_summary.sort_values(by=["ประเภท", "อันดับ"])
+
+
+    # แสดงผลใน Streamlit
+    st.info("📋 ตารางสรุป Top 10 และ Bottom 10 ของทุกอุปกรณ์ (รวมทุกผู้ดูแล)")
+    #st.dataframe(df_summary.style.format({"Avg Availability (%)": "{:.5f}%"}), use_container_width=True)
+    #st.dataframe(
+    #    df_summary[[
+    #        "อันดับ", "Avg. Availability (%)", "Device", "Description", "สถานที่", "การไฟฟ้า", "ผู้ดูแล", "ประเภท"
+    #    ]].style.format({"Avg. Availability (%)": "{:.2f}"}),
+    #    use_container_width=True, hide_index=True
+    #)
+    df_summary = df_summary[[
+        "อันดับ", "Avg. Availability (%)", "Device", 
+        "Description", "สถานที่", "การไฟฟ้า", "ผู้ดูแล", "ประเภท"
+        ]]
+
+    # แสดงหมายเหตุถ้ามี Device ที่มีค่า 0%
+    if not df_zero.empty:
+        st.warning(f"⚠️ มี Device จำนวน {df_zero['Device'].nunique()} รายการที่มี Avg Availability = 0 ซึ่งไม่ถูกจัดอันดับ")
+
+    # ✅ แปลง "Avg Availability (%)" ให้มี 3 ตำแหน่ง และเพิ่ม "%"
+    df_summary["Avg. Availability (%)"] = df_summary["Avg. Availability (%)"].map(lambda x: f"{x:.3f} %")
+    st.dataframe(df_summary)
+    # --- แปลงเป็น Excel สำหรับดาวน์โหลด ---
+    def to_excel(df):
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="Top Bottom Availability")
+        processed_data = output.getvalue()
+        return processed_data
+
+    excel_file = to_excel(df_summary)
+
+    # --- ปุ่มดาวน์โหลดใน Streamlit ---
+    st.download_button(
+        label="📥 ดาวน์โหลดตารางอันดับ Availability (Top/Bottom)",
+        data=excel_file,
+        file_name="availability_ranking_top_bottom.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 # ---- Upload and Merge ----
 uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
 
@@ -1036,7 +1150,7 @@ if uploaded_files:
     option_submenu = ['ระบบจำหน่ายสายส่ง','สถานีไฟฟ้า']
     flag = st.selectbox("🔍 เลือกระดับการวิเคราะห์", ["อุปกรณ์ FRTU", "สถานีไฟฟ้า"])
     title = flag  # เก็บไว้ใช้ในชื่อกราฟ
-    summarize_top_bottom_table(df_combined)
+    summarize_top_bottom_overall(df_combined)
     
     #owner = st.selectbox("🔍 เลือกผู้ดูแล", ["PEA ดูแล", "Producer ดูแล"])
     # เปลี่ยนชื่อคอลัมน์ Device ตาม flag
