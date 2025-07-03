@@ -1065,7 +1065,7 @@ def summarize_top_bottom_overall(df):
 
      # รวมข้อมูลอื่น ๆ ที่ต้องการ (ใช้ข้อมูลล่าสุดของแต่ละ Device)
     latest_info = df_valid.sort_values("Month").drop_duplicates(subset="Device", keep="last")[
-        ["Device", "Description", "สถานที่", "การไฟฟ้า", "ผู้ดูแล"]
+        ["Device", "Description", "การไฟฟ้า", "ผู้ดูแล"]
     ]
 
     device_avg = device_avg.merge(latest_info, on="Device", how="left")
@@ -1074,7 +1074,7 @@ def summarize_top_bottom_overall(df):
     #device_avg.insert(0, "อันดับ", range(1, len(device_avg) + 1))
 
     # สรุป Top 10 และ Bottom 10
-    top10 = device_avg.head(5).copy()
+    top10 = device_avg.head(10).copy()
     top10["ประเภท"] = "🔼 Top 10 สูงสุด"
     bottom10 = device_avg.tail(10).copy()
     bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
