@@ -201,7 +201,7 @@ def evaluate(df,bins,labels,flag):
     #เพิ่ม Month
     df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
     df["Month_str"] = df["Month"].dt.strftime("%Y-%m")
-    df["Availability (%)"] = df["Availability (%)"] * 100
+    #df["Availability (%)"] = df["Availability (%)"] * 100
 
     all_month_summaries = []  # 🔹 รวมไว้ทีหลัง
 
@@ -258,6 +258,8 @@ def evaluate(df,bins,labels,flag):
     final_month_summary.insert(0, "ลำดับ", range(1, len(final_month_summary) + 1))
     # ลบคอลัมน์ช่วยถ้าไม่ต้องการแสดง
     final_month_summary = final_month_summary.drop(columns=["ปี-เดือน-dt"])
+    # ✅ แปลง "Avg Availability (%)" ให้มี 3 ตำแหน่ง และเพิ่ม "%"
+    final_month_summary["Avg.Availability (%)"] = final_month_summary["Avg.Availability (%)"].map(lambda x: f"{x:.3f} %")
     ### ✅ แสดงรวมในตารางเดียว
     st.info(f"📊 ตารางสรุปรายเดือนเฉลี่ย Availability (%) ของ {flag} (แยกตามผู้ดูแล)")
     # ✅ แสดงผลโดยซ่อน index ด้านซ้าย
@@ -1074,7 +1076,7 @@ def summarize_top_bottom_overall(df):
     #device_avg.insert(0, "อันดับ", range(1, len(device_avg) + 1))
 
     # สรุป Top 10 และ Bottom 10
-    top10 = device_avg.head(5).copy()
+    top10 = device_avg.head(10).copy()
     top10["ประเภท"] = "🔼 Top 10 สูงสุด"
     bottom10 = device_avg.tail(10).copy()
     bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
