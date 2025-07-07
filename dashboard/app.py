@@ -1067,7 +1067,7 @@ def summarize_top_bottom_overall(df):
 
      # รวมข้อมูลอื่น ๆ ที่ต้องการ (ใช้ข้อมูลล่าสุดของแต่ละ Device)
     latest_info = df_valid.sort_values("Month").drop_duplicates(subset="Device", keep="last")[
-        ["Device", "Description", "สถานที่", "การไฟฟ้า", "ผู้ดูแล"]
+        ["Device", "Description", "การไฟฟ้า", "ผู้ดูแล"]
     ]
 
     device_avg = device_avg.merge(latest_info, on="Device", how="left")
@@ -1082,7 +1082,7 @@ def summarize_top_bottom_overall(df):
     bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
 
     df_summary = pd.concat([top10, bottom10], ignore_index=True)
-    st.dataframe(df_summary)
+
     # จัดเรียงจากมากไปน้อย
     #df_summary = df_summary.sort_values(by="Avg. Availability (%)", ascending=False)
     #df_summary = df_summary.sort_values("Avg. Availability (%)", ascending=False).reset_index(drop=True)
@@ -1136,15 +1136,9 @@ if uploaded_files:
     all_data = []
     
     for uploaded_file in uploaded_files:
-        # อ่านชื่อชีตทั้งหมดในไฟล์
-        xls = pd.ExcelFile(uploaded_file)
-        sheetnames = xls.sheet_names
-        # ให้ผู้ใช้เลือกชื่อชีต
-        selected_sheet = st.selectbox(f"📑 เลือก Sheet สำหรับไฟล์ {uploaded_file.name}", sheetnames, key=uploaded_file.name)
+        df = pd.read_excel(uploaded_file)
 
-        df = pd.read_excel(uploaded_file,sheet_name=selected_sheet)
-        
-        if "Month" not in df.columns:
+        if "Availability Period" not in df.columns:
             st.warning(f"❌ ไม่มีคอลัมน์ 'Availability Period' ในไฟล์ {uploaded_file.name}")
             continue
         df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
