@@ -41,15 +41,24 @@ def pivot(df,flag):
         values="สั่งการสำเร็จ (%)",
         aggfunc="mean"
     )
-    device_meta = df_pivot[["Device", "ผู้ดูแล"]].drop_duplicates()
+    
+    device_meta = df_pivot["Device"].drop_duplicates()
     pivot_df = pivot_df.reset_index().merge(device_meta, on="Device", how="left").set_index("Device")
-    st.dataframe(pivot_df)
+    #pivot_df = pivot_df.reset_index().merge(device_meta, on="Device", how="left")
+
+    # ดึงชื่อคอลัมน์เดือนที่มีจริงใน pivot_df
+    #month_cols = [col for col in month_names if col in pivot_df.columns]
+    # เรียงคอลัมน์ใหม่: เดือนก่อน ตามด้วยคอลัมน์อื่น
+    #other_cols = [col for col in pivot_df.columns if col not in month_cols and col != "Device"]
+    #pivot_df = pivot_df[["Device"] + month_cols + other_cols]
+    #mix_cols = ["Device"] + month_cols + other_cols
+
     # เรียงเดือน
     pivot_df = pivot_df.reindex(columns=month_names)
-
+    
     # ค่าเฉลี่ย (ยังเป็น float ตอนนี้)
     pivot_df["Avg.สั่งการสำเร็จ (%)"] = pivot_df.mean(axis=1, skipna=True)
-    
+
     # คัดลอกเพื่อเช็คอุปกรณ์ที่ไม่มีข้อมูลเลย
     null_mask = pivot_df.drop(columns="Avg.สั่งการสำเร็จ (%)").isnull().all(axis=1)
     devices_all_null = pivot_df[null_mask].index.tolist()
@@ -72,9 +81,11 @@ def pivot(df,flag):
     
     pivot_df_rename = pivot_df_display.copy()
     #pivot_df_rename = pivot_df_rename.rename(columns={"Device": flag})
+
     pivot_df_rename.rename(columns={"Device": flag}, inplace=True)
     #pivot_df_rename.insert(0, "ลำดับ", range(1, len(pivot_df_rename) + 1))
     
+    # ✅✅✅----------------------------------------
     st.info(f"✅ สรุป สั่งการสำเร็จ (%) แต่ละ {title} แยกตามเดือน")
     st.dataframe(pivot_df_rename, use_container_width=True)
 
@@ -93,12 +104,84 @@ def pivot(df,flag):
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
 
+    # ✅✅✅----------------------------------------
     st.info("จัดอันดับ Avg.สั่งการสำเร็จ (%)")
     pivot_df_numeric["อันดับ"] = pivot_df_numeric["Avg.สั่งการสำเร็จ (%)"].rank(method='min', ascending=False).astype("Int64")
     pivot_df_rename.insert(1, "อันดับ", pivot_df_numeric["อันดับ"])
     st.dataframe(pivot_df_rename, use_container_width=True)
-    st.info("rrr")
-    st.dataframe(pivot_df_numeric, use_container_width=True)
+
+    # ✅✅✅✅ --------------------------Average ตาม Owner ✅✅✅
+
+    # ดึง metadata ที่มีคอลัมน์ผู้ดูแลจาก df_pivot (ต้นฉบับ)
+    cols = ["Device", "ประเภทอุปกรณ์", "ผู้ดูแล", "ใช้งาน/ไม่ใช้งาน"]
+    cols_owner = ["Device", "ผู้ดูแล"]
+    cols_type = ["Device", "ประเภทอุปกรณ์"]
+    
+    pivot_df_owner = pivot_df_numeric.copy()
+    pivot_df_type = pivot_df_numeric.copy()
+
+    device_owner = df_pivot[cols_owner].drop_duplicates()
+    # Merge "ผู้ดูแล" กลับเข้าไปใน pivot_df_numeric
+    pivot_df_owner = pivot_df_owner.reset_index().merge(device_owner, on="Device", how="left").set_index("Device")
+    
+    # เรียก wide → long และแนบผู้ดูแล
+    df_long_by_owner = pivot_df_owner.reset_index()[cols_owner + month_names].melt(
+        id_vars=["Device", "ผู้ดูแล"],
+        value_vars=month_names,
+        var_name="เดือน",
+        value_name="สั่งการสำเร็จ (%)"
+    )
+
+    # ลบ NaN
+    df_long_by_owner = df_long_by_owner.dropna(subset=["สั่งการสำเร็จ (%)"])
+
+    # คำนวณค่าเฉลี่ยรายเดือน แยกตามผู้ดูแล
+    df_avg_by_owner = df_long_by_owner.groupby(["เดือน", "ผู้ดูแล"])["สั่งการสำเร็จ (%)"].mean().reset_index()
+
+    # จัดรูปแบบค่า %
+    df_avg_by_owner["Avg.สั่งการสำเร็จ (%)"] = df_avg_by_owner["สั่งการสำเร็จ (%)"].map(lambda x: f"{x:.2f}%")
+
+    # เรียงเดือนตาม month_names
+    df_avg_by_owner["เดือน"] = pd.Categorical(df_avg_by_owner["เดือน"], categories=month_names, ordered=True)
+    df_avg_by_owner = df_avg_by_owner.sort_values("เดือน").reset_index()
+
+    # แสดงผล
+    st.subheader("📋 ค่าเฉลี่ยการสั่งการสำเร็จ (%) รายเดือน แยกตามผู้ดูแล")
+    st.dataframe(df_avg_by_owner[["เดือน", "Avg.สั่งการสำเร็จ (%)", "ผู้ดูแล"]], use_container_width=True)
+
+    # ✅✅✅✅ --------------------------Average ตาม type ✅✅✅
+    # ดึง metadata ที่มีคอลัมน์ "ประเภทอุปกรณ์"
+    device_type = df_pivot[cols_type].drop_duplicates()
+
+    # รวมกลับเข้า pivot_df_numeric
+    pivot_df_type = pivot_df_type.reset_index().merge(device_type, on="Device", how="left").set_index("Device")
+
+    # Melt wide → long พร้อม "ประเภทอุปกรณ์"
+    df_long_by_type = pivot_df_type.reset_index()[cols_type + month_names].melt(
+        id_vars=["Device", "ประเภทอุปกรณ์"],
+        value_vars=month_names,
+        var_name="เดือน",
+        value_name="สั่งการสำเร็จ (%)"
+    )
+
+    # ลบ NaN
+    df_long_by_type = df_long_by_type.dropna(subset=["สั่งการสำเร็จ (%)"])
+
+    # คำนวณค่าเฉลี่ย
+    df_avg_by_type = df_long_by_type.groupby(["เดือน", "ประเภทอุปกรณ์"])["สั่งการสำเร็จ (%)"].mean().reset_index()
+
+    # แปลงเป็น %
+    df_avg_by_type["Avg.สั่งการสำเร็จ (%)"] = df_avg_by_type["สั่งการสำเร็จ (%)"].map(lambda x: f"{x:.2f}%")
+
+    # เรียงเดือน
+    df_avg_by_type["เดือน"] = pd.Categorical(df_avg_by_type["เดือน"], categories=month_names, ordered=True)
+    df_avg_by_type = df_avg_by_type.sort_values("เดือน").reset_index()
+
+    # ✅ แสดงผล
+    st.subheader("📋 ค่าเฉลี่ยสั่งการสำเร็จ (%) รายเดือน แยกตามประเภทอุปกรณ์")
+    st.dataframe(df_avg_by_type[["เดือน", "ประเภทอุปกรณ์", "Avg.สั่งการสำเร็จ (%)"]], use_container_width=True)
+
+    """
     #wide format (แต่ละเดือนเป็นคอลัมน์)
     #long format (เดือนอยู่ในแถว)
     # ✅ แปลงตารางจาก wide เป็น long format เพื่อแสดง "เดือน", "Device", "Avg.สั่งการสำเร็จ (%)"
@@ -117,10 +200,10 @@ def pivot(df,flag):
 
     df_long.rename(columns={"Success Rate (%)": "Avg.สั่งการสำเร็จ (%)"}, inplace=True)
 
-    # ✅ แสดงผล
+    #  ✅✅✅----------------------------------------
     #st.subheader("📊 ตาราง \"เดือน - Device - Avg.สั่งการสำเร็จ (%)\"")
     #st.dataframe(df_long, use_container_width=True, hide_index=True)
-
+    """
     # กรองเฉพาะคอลัมน์เดือนเท่านั้น (จาก pivot_df_numeric ที่ยังเป็น float)
     df_avg_month = pivot_df_numeric[month_names].mean(axis=0, skipna=True).reset_index()
 
@@ -130,7 +213,7 @@ def pivot(df,flag):
     # จัดรูปแบบค่าเป็นเปอร์เซ็นต์
     df_avg_month["Avg.สั่งการสำเร็จ (%)"] = df_avg_month["Avg.สั่งการสำเร็จ (%)"].map(lambda x: f"{x:.2f}%" if pd.notnull(x) else "-")
 
-    # แสดงผล
+    # ✅✅✅แสดงผล
     st.subheader("📋 ค่าเฉลี่ยการสั่งการสำเร็จ (%) รายเดือน (รวมทุก Device)")
     st.dataframe(df_avg_month, use_container_width=True, hide_index=True)
 
@@ -168,6 +251,9 @@ def pivot(df,flag):
 
     st.subheader("📋 ตาราง Device ที่ไม่มีการสั่งการในแต่ละเดือน")
     st.dataframe(missing_df)
+
+    
+    
     return pivot_df_display, devices_all_null, pivot_df_numeric
 
 def lineplot(df):
