@@ -71,7 +71,7 @@ def plot_avg(df):
         )
 
     # --- แสดงผล ---
-    #st.plotly_chart(fig_total_avg, use_container_width=True)
+    st.plotly_chart(fig_total_avg, use_container_width=True)
     #st.plotly_chart(fig_by_device, use_container_width=True)
 
     fig_scatter = px.scatter(
@@ -208,11 +208,11 @@ def evaluate(df,bins,labels,flag):
     # กำหนดเงื่อนไขสำหรับผลการประเมิน
     def evaluate_result(row):
         if row == "90 < Availability (%) <= 100": #label == "90 < Availability (%) <= 100": รับ String
-            return "✅"
+            return "✅ ดีเยี่ยม"
         elif row == "80 < Availability (%) <= 90":
-            return "⚠️"
+            return "⚠️ ควรปรับปรุง"
         else:
-            return "❌"
+            return "❌ ต่ำกว่าเกณฑ์"
         
     # 🔹 ฟังก์ชันประเมินผลในแต่ละกลุ่ม (PEA หรือ Producer)
     def evaluate_group(df_group, owner_label):
@@ -263,8 +263,9 @@ def evaluate(df,bins,labels,flag):
     ### ✅ แสดงรวมในตารางเดียว
     st.info(f"📊 ตารางสรุปรายเดือนเฉลี่ย Availability (%) ของ {flag} (แยกตามผู้ดูแล)")
     # ✅ แสดงผลโดยซ่อน index ด้านซ้าย
+    st.info("testtest")
     st.dataframe(final_month_summary, use_container_width=True, hide_index=True)
-
+    
     #fig_bar1 = px.bar(final_month_summary, x="ปี-เดือน", y="Avg.Availability (%)", color="ผู้ดูแล", barmode="group")
     #st.plotly_chart(fig_bar1, use_container_width=True)
 
@@ -292,6 +293,24 @@ def evaluate(df,bins,labels,flag):
     })
     #summary_df = pd.concat([final_month_summary, total_row], ignore_index=True)
     #summary_df["Device+Percent"] = summary_df.apply(lambda row: f"{int(row['จำนวน Device']):,}", axis=1)
+    
+    # 🔹 ประเมินผลแยกตามผู้ดูแล
+    for owner in final_month_summary["ผู้ดูแล"].unique():
+        df_owner = final_month_summary[final_month_summary["ผู้ดูแล"] == owner].copy()
+
+        # แปลง % กลับเป็นตัวเลข
+        monthly_avg = df_owner["Avg.Availability (%)"].str.replace("%", "").astype(float)
+
+        # คำนวณค่าเฉลี่ยของค่าเฉลี่ยรายเดือน
+        avg_of_monthly_avg = monthly_avg.mean()
+
+        # ประเมินผล
+        eval_label = pd.cut([avg_of_monthly_avg], bins=bins, labels=labels)[0]
+        eval_symbol = evaluate_result(eval_label)
+
+        # แสดงผล
+        st.success(f"🎯 ค่าเฉลี่ยของค่าเฉลี่ยรายเดือนสำหรับ {owner}: **{avg_of_monthly_avg:.3f}%** {eval_symbol}")
+
     return final_month_summary, device_avg
 
     
@@ -1337,9 +1356,10 @@ if uploaded_files:
         plot(df_combined,typeplot)
         plot_avg(df_combined)
 
+        st.dataframe(grouped_counts)
         fig2 = px.bar(
             grouped_counts,
-            x="Availability Group",
+            x="ช่วง % Availability",
             y="จำนวน Device",
             facet_col="Month_name",
             color="Availability Group",
@@ -1356,7 +1376,7 @@ if uploaded_files:
         )
         fig2.update_traces(texttemplate="%{text:,}", textposition="outside")
 
-        st.plotly_chart(fig2, use_container_width=True)
+        #st.plotly_chart(fig2, use_container_width=True)
         cols = "จำนวน " + title
         grouped_counts.rename(columns={"Availability Group": "ช่วง % Availability","count": cols}, inplace=True)
         fig = px.bar(
