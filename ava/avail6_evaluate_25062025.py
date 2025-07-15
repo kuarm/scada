@@ -1242,7 +1242,6 @@ if uploaded_files:
         #st.plotly_chart(fig3, use_container_width=True)
         """
     elif func_select == 'Histogram':
-        
         df_histogram = df_combined.copy()  # ป้องกัน SettingWithCopyWarning
         # ลบ % และ comma ออกก่อน แล้วแปลงเป็น float
         df_histogram["Availability (%)"] = df_histogram["Availability (%)"].replace({",": "", "%": ""}, regex=True)
@@ -1256,29 +1255,28 @@ if uploaded_files:
         #df_histogram["Month_name"] = df_histogram["Month_num"].apply(lambda x: thai_months[x - 1] if pd.notnull(x) else "")
         # คำนวณค่าเฉลี่ย Availability (%) ต่ออุปกรณ์ พร้อมแนบชื่อผู้ดูแล
         df_avg_device = df_histogram.groupby(["Device", "ผู้ดูแล"])["Availability (%)"].mean().reset_index()
-
         # กำหนดช่วงกลุ่ม Availability
         bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         labels = [f"{bins[i]}-{bins[i+1]} %" for i in range(len(bins)-1)]
-        df_histogram["Availability (%)"] = df_histogram["Availability (%)"] * 100
-        df_avg_device["Availability (%)"] = df_avg_device["Availability (%)"] * 100
+        #df_histogram["Availability (%)"] = df_histogram["Availability (%)"] * 100
+        #df_avg_device["Availability (%)"] = df_avg_device["Availability (%)"] * 100
         df_histogram["Availability Group"] = pd.cut(df_histogram["Availability (%)"], bins=bins, labels=labels, right=True)
         df_avg_device["Availability Group"] = pd.cut(df_avg_device["Availability (%)"], bins=bins, labels=labels, right=True)
-        st.dataframe(df_avg_device)
+
         total_months = df_histogram["Month"].nunique()
         # --- สร้าง Selectbox สำหรับเลือกเดือน ---
         available_months = sorted(df_histogram["Month_year"].dropna().unique())
         selected_month = st.selectbox("📅 เลือกเดือนที่ต้องการดู Histogram", available_months)
-
+        
         # --- กรองข้อมูลเฉพาะเดือนที่เลือก ---
-        filtered_df = df_histogram[df_histogram["Month_year"] == selected_month]
-
+        #filtered_df = df_histogram[df_histogram["Month_year"] == selected_month]
+        
         # Group ข้อมูล
         #grouped_counts = df_histogram.groupby(["Month_name", "Availability Group"]).size().reset_index(name="จำนวน Device")
         #grouped_counts = df_histogram["Availability Group"].value_counts().sort_index().reset_index() ###ของเดิม
-
+        
         # --- สร้าง Histogram ---
-        grouped_counts = filtered_df["Availability Group"].value_counts().sort_index().reset_index()
+        grouped_counts = df_histogram["Availability Group"].value_counts().sort_index().reset_index()
         grouped_counts.columns = ["ช่วง % Availability", "จำนวน Device"]
         #grouped_counts_avg = df_avg_device["Availability Group"].value_counts().sort_index().reset_index()
         #grouped_counts_avg.columns = ["ช่วง % Availability", "จำนวน Device"]
@@ -1324,7 +1322,6 @@ if uploaded_files:
         )
 
         fig.update_traces(texttemplate="%{text:,}", textposition="outside")
-
         #st.plotly_chart(fig, use_container_width=True)
 
         fig_bar_avg = px.bar(
@@ -1353,10 +1350,11 @@ if uploaded_files:
         st.plotly_chart(fig_bar_avg, use_container_width=True)
 
         typeplot = "Line"
-        plot(df_combined,typeplot)
-        plot_avg(df_combined)
+        #plot(df_combined,typeplot)
+        #plot_avg(df_combined)
 
-        st.dataframe(grouped_counts)
+        #st.dataframe(grouped_counts)
+        """
         fig2 = px.bar(
             grouped_counts,
             x="ช่วง % Availability",
@@ -1375,8 +1373,11 @@ if uploaded_files:
             yaxis_type="log"
         )
         fig2.update_traces(texttemplate="%{text:,}", textposition="outside")
-
         #st.plotly_chart(fig2, use_container_width=True)
+
+        """
+        st.info("testeest")
+        st.dataframe(grouped_counts)
         cols = "จำนวน " + title
         grouped_counts.rename(columns={"Availability Group": "ช่วง % Availability","count": cols}, inplace=True)
         fig = px.bar(
