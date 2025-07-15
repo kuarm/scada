@@ -4,7 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from io import BytesIO
 
-def plot_avg(df):
+def plot_avg(df,flag):
     # --- เตรียมข้อมูล ---
     df_avg = df.copy()
 
@@ -20,48 +20,69 @@ def plot_avg(df):
     df_avg = df_avg.dropna(subset=["Availability (%)", "Device", "Month_str"])
 
     # --- ตัวเลือกเดือน (Filter) ---
+    month_names_th = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+                  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+    df_avg["ปี"] = pd.to_datetime(df_avg["Month_str"], format="%Y-%m", errors="coerce").dt.year
+    #df_avg["เดือน"] = pd.to_datetime(df_avg["Month_str"], format="%Y-%m", errors="coerce").dt.month
+    
+    
     all_months = sorted(df_avg["Month_str"].unique())
     selected_months = st.multiselect("📆 เลือกเดือนที่ต้องการวิเคราะห์", all_months, default=all_months)
 
     # กรองข้อมูลตามเดือนที่เลือก
     df_avg = df_avg[df_avg["Month_str"].isin(selected_months)]
-
+    years = sorted(df_avg["ปี"].unique())
+    year_str = ", ".join(str(y) for y in years)
+    
     # --- ตัวเลือก Device (Filter) ---
     all_devices = sorted(df_avg["Device"].unique())
     selected_devices = st.multiselect("🖥️ เลือก Device ที่ต้องการวิเคราะห์", all_devices, default=all_devices)
 
     # กรองข้อมูลตาม Device ที่เลือก
     df_avg = df_avg[df_avg["Device"].isin(selected_devices)]
-
+    
     # --- 🔹 กราฟที่ 1: ค่าเฉลี่ยรวมทุก Device รายเดือน ---
     monthly_avg = df_avg.groupby("Month_str")["Availability (%)"].mean().reset_index()
     monthly_avg["Availability (%)"] = monthly_avg["Availability (%)"].round(2)
-
+    
+    ###✅✅✅ Avg. ✅✅✅
+    # แปลง Month_str เป็น datetime ก่อน
+    monthly_avg["Month_dt"] = pd.to_datetime(monthly_avg["Month_str"], format="%Y-%m", errors="coerce")
+    monthly_avg["เดือน"] = monthly_avg["Month_dt"].dt.month.apply(lambda x: month_names_th[x - 1])
     fig_total_avg = px.line(
         monthly_avg,
-        x="Month_str",
+        x="เดือน",
         y="Availability (%)",
         markers=True,
-        title="📈 ค่าเฉลี่ย Availability (%) ของทุก Device รายเดือน",
+        title=f"📈 ค่า Availability (%) เฉลี่ยรายเดือนในปี {year_str} ของ {flag} ",
+        text="Availability (%)"
+        )
+    fig_total_avg.update_traces(
+        texttemplate="%{text:.2f}%",  # format ตัวเลข
+        textposition="top center"
         )
     fig_total_avg.update_layout(
+        xaxis=dict(categoryorder="array", categoryarray=month_names_th),
         xaxis_title="เดือน",
-        yaxis_title="Average Availability (%)",
+        yaxis_title="Availability (%) เฉลี่ย",
         yaxis=dict(range=[0, 105]),
         hovermode="x unified"
         )
+    st.plotly_chart(fig_total_avg, use_container_width=True)
 
     # --- 🔹 กราฟที่ 2: Availability (%) รายเดือนแยกตาม Device ---
     device_monthly = df_avg.groupby(["Month_str", "Device"])["Availability (%)"].mean().reset_index()
     device_monthly["Availability (%)"] = device_monthly["Availability (%)"].round(2)
 
+    ###✅✅✅ LINE ✅✅✅
     fig_by_device = px.line(
         device_monthly,
         x="Month_str",
         y="Availability (%)",
         color="Device",
         markers=True,
-        title="📊 Availability (%) รายเดือนแยกตาม Device"
+        title=f"📊 Availability (%) รายเดือนแยกตาม {flag}"
         )
     fig_by_device.update_layout(
         xaxis_title="เดือน",
@@ -69,24 +90,25 @@ def plot_avg(df):
         yaxis=dict(range=[0, 105]),
         hovermode="x unified"
         )
-
-    # --- แสดงผล ---
-    st.plotly_chart(fig_total_avg, use_container_width=True)
     #st.plotly_chart(fig_by_device, use_container_width=True)
 
+    ###✅✅✅ Scatter ✅✅✅
+    #df_avg.rename(columns={"Month_str": "เดือน"}, inplace=True)
+    df_avg["Month_dt"] = pd.to_datetime(df_avg["Month_str"], format="%Y-%m", errors="coerce")
+    df_avg["เดือน"] = df_avg["Month_dt"].dt.month.apply(lambda x: month_names_th[x - 1])
     fig_scatter = px.scatter(
         df_avg,
         x="Device",
         y="Availability (%)",
-        color="Month_str",  # เพื่อแยกสีตามเดือน
-        title="📍 Availability (%) ของแต่ละ Device (Scatter)",
-        hover_data=["Month_str"],  # แสดงเดือนใน hover
+        color="เดือน",  # เพื่อแยกสีตามเดือน
+        title = f"📍 ค่า Availability (%) รายเดือนในปี {year_str} ของ {flag}",
+        hover_data=["เดือน"],  # แสดงเดือนใน hover
         )
 
     fig_scatter.update_layout(
-        xaxis_title="Device",
+        xaxis_title=flag,
         yaxis_title="Availability (%)",
-        yaxis=dict(range=[0, 105]),
+        yaxis=dict(range=[-5, 105]),
         xaxis_tickangle=-45,
         height=600
         )
@@ -202,6 +224,9 @@ def evaluate(df,bins,labels,flag):
     df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
     df["Month_str"] = df["Month"].dt.strftime("%Y-%m")
     #df["Availability (%)"] = df["Availability (%)"] * 100
+    df["ปี"] = pd.to_datetime(df["Month_str"], format="%Y-%m", errors="coerce").dt.year
+    years = sorted(df["ปี"].unique())
+    year_str = ", ".join(str(y) for y in years)
 
     all_month_summaries = []  # 🔹 รวมไว้ทีหลัง
 
@@ -261,9 +286,9 @@ def evaluate(df,bins,labels,flag):
     # ✅ แปลง "Avg Availability (%)" ให้มี 3 ตำแหน่ง และเพิ่ม "%"
     final_month_summary["Avg.Availability (%)"] = final_month_summary["Avg.Availability (%)"].map(lambda x: f"{x:.3f} %")
     ### ✅ แสดงรวมในตารางเดียว
-    st.info(f"📊 ตารางสรุปรายเดือนเฉลี่ย Availability (%) ของ {flag} (แยกตามผู้ดูแล)")
+    st.info(f"📊 ประเมินผลค่า Availability (%) เฉลี่ยรายเดือนในปี {year_str} ของ {flag} (แยกตามผู้ดูแล)")
+    
     # ✅ แสดงผลโดยซ่อน index ด้านซ้าย
-    st.info("testtest")
     st.dataframe(final_month_summary, use_container_width=True, hide_index=True)
     
     #fig_bar1 = px.bar(final_month_summary, x="ปี-เดือน", y="Avg.Availability (%)", color="ผู้ดูแล", barmode="group")
@@ -279,8 +304,9 @@ def evaluate(df,bins,labels,flag):
     total_months = df_group["Month"].nunique()
 
     ### ✅
-    st.info(f"✅ ประเมินผล Availability (%) รายอุปกรณ์เฉลี่ย {total_months} เดือน แยกตาม{flag}")
+    st.info(f"📊 ประเมินผลค่า Availability (%) เฉลี่ยรายอุปกรณ์ในปี {year_str} {total_months} เดือน แยกตาม{flag}")
     st.dataframe(device_avg)
+    st.info(f"📊 ประเมินผลค่า Availability (%) เฉลี่ยรายอุปกรณ์ในปี {year_str} ของ {flag} (แยกตามผู้ดูแล)")
     
     # สรุปรวมทั้งหมด
     overall_avg = df["Availability (%)"].mean()
@@ -1072,7 +1098,7 @@ def summarize_top_bottom_table_(df):
         st.warning(f"⚠️ พบ Device จำนวน {df_zero['Device'].nunique()} รายการ ที่มีค่า Avg Availability = 0 และไม่ถูกนำมาจัดอันดับ")
 
     
-def summarize_top_bottom_overall(df):
+def summarize_top_bottom_overall(df,flag):
     df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
     df["Availability (%)"] = df["Availability (%)"] * 100
     
@@ -1101,7 +1127,7 @@ def summarize_top_bottom_overall(df):
     bottom10["ประเภท"] = "🔽 Bottom 10 ต่ำสุด"
 
     df_summary = pd.concat([top10, bottom10], ignore_index=True)
-    st.dataframe(df_summary)
+
     # จัดเรียงจากมากไปน้อย
     #df_summary = df_summary.sort_values(by="Avg. Availability (%)", ascending=False)
     #df_summary = df_summary.sort_values("Avg. Availability (%)", ascending=False).reset_index(drop=True)
@@ -1126,11 +1152,13 @@ def summarize_top_bottom_overall(df):
 
     # แสดงหมายเหตุถ้ามี Device ที่มีค่า 0%
     if not df_zero.empty:
-        st.warning(f"⚠️ มี Device จำนวน {df_zero['Device'].nunique()} รายการที่มี Avg Availability = 0 ซึ่งไม่ถูกจัดอันดับ")
+        st.warning(f"⚠️ มี Device จำนวน {df_zero['Device'].nunique()} รายการที่มี Avg. Availability = 0 ซึ่งไม่ถูกจัดอันดับ")
 
     # ✅ แปลง "Avg Availability (%)" ให้มี 3 ตำแหน่ง และเพิ่ม "%"
     df_summary["Avg. Availability (%)"] = df_summary["Avg. Availability (%)"].map(lambda x: f"{x:.3f} %")
     st.dataframe(df_summary)
+    
+    
     # --- แปลงเป็น Excel สำหรับดาวน์โหลด ---
     def to_excel(df):
         output = BytesIO()
@@ -1148,6 +1176,29 @@ def summarize_top_bottom_overall(df):
         file_name="availability_ranking_top_bottom.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+        # 🔽 แปลง df_zero["Device"] เป็น DataFrame สำหรับ export
+    df_zero_export = df_zero[["Device"]].drop_duplicates().reset_index(drop=True)
+    df_zero_export.columns = ["Device (Availability = 0)"]
+
+    st.info(f"{flag} จำนวน {df_zero['Device'].nunique()} {flag} ที่ Avg. Availability = 0")
+    st.dataframe(df_zero_export)
+    def to_excel_zero(df):
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="Zero Availability")
+        return output.getvalue()
+
+    excel_file_zero = to_excel_zero(df_zero_export)
+
+    st.download_button(
+        label="📥 ดาวน์โหลดรายการอุปกรณ์ที่ Availability = 0",
+        data=excel_file_zero,
+        file_name="devices_with_zero_availability.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
 # ---- Upload and Merge ----
 uploaded_files = st.file_uploader("📁 อัปโหลดไฟล์ Excel (หลายไฟล์)", type=["xlsx", "xls"], accept_multiple_files=True)
 
@@ -1173,11 +1224,11 @@ if uploaded_files:
         all_data.append(df)
 
     df_combined = pd.concat(all_data, ignore_index=True)
-    option_func = ['สถานะ', 'ประเมินผล', 'Histogram', 'เปรียบเทียบทุกเดือน']
+    option_func = ['Ranking', 'ประเมินผล', 'Histogram', 'เปรียบเทียบทุกเดือน']
     option_submenu = ['ระบบจำหน่ายสายส่ง','สถานีไฟฟ้า']
     flag = st.selectbox("🔍 เลือกระดับการวิเคราะห์", ["อุปกรณ์ FRTU", "สถานีไฟฟ้า"])
     title = flag  # เก็บไว้ใช้ในชื่อกราฟ
-    summarize_top_bottom_overall(df_combined)
+    
     
     #owner = st.selectbox("🔍 เลือกผู้ดูแล", ["PEA ดูแล", "Producer ดูแล"])
     # เปลี่ยนชื่อคอลัมน์ Device ตาม flag
@@ -1351,7 +1402,7 @@ if uploaded_files:
 
         typeplot = "Line"
         #plot(df_combined,typeplot)
-        #plot_avg(df_combined)
+        plot_avg(df_combined,title)
 
         #st.dataframe(grouped_counts)
         """
@@ -1376,16 +1427,14 @@ if uploaded_files:
         #st.plotly_chart(fig2, use_container_width=True)
 
         """
-        st.info("testeest")
-        st.dataframe(grouped_counts)
         cols = "จำนวน " + title
-        grouped_counts.rename(columns={"Availability Group": "ช่วง % Availability","count": cols}, inplace=True)
+        
         fig = px.bar(
                     grouped_counts,
                     x="ช่วง % Availability",
-                    y=cols,
+                    y="จำนวน Device",
                     color="ช่วง % Availability",
-                    text=cols,
+                    text="จำนวน Device",
                     title=f"📊 {cols}ในแต่ละช่วง % Availability",
                     color_discrete_sequence=[
                         "#FF0000", "#FF4000", "#FF8000", "#FFBF00", "#FFFF00",
@@ -1401,15 +1450,15 @@ if uploaded_files:
                 texttemplate="%{text:,}",  # ใส่ comma
                 textposition="outside"
                 )
-        st.plotly_chart(fig, use_container_width=True)
+        #st.plotly_chart(fig, use_container_width=True)
 
         # เตรียมข้อมูล
         x_vals = grouped_counts["ช่วง % Availability"]
-        y_vals = grouped_counts[cols]
+        y_vals = grouped_counts["จำนวน Device"]
         colors = [get_color(x) for x in x_vals]
 
         # สร้างกราฟ
-        fig11 = go.Figure(data=[go.Bar(
+        fig_log = go.Figure(data=[go.Bar(
             x=x_vals,
             y=y_vals,
             text=[f"{int(v):,}" for v in y_vals],  # ใส่ comma
@@ -1417,7 +1466,7 @@ if uploaded_files:
             marker_color=colors
         )])
         # ปรับ layout
-        fig11.update_layout(
+        fig_log.update_layout(
             title=f"📊 {cols}ในแต่ละช่วง % Availability (log scale)",
             xaxis_title="ช่วง % Availability",
             yaxis_type="log",  # ใช้ log scale
@@ -1426,9 +1475,9 @@ if uploaded_files:
             margin=dict(t=60, b=40)
         )
 
-        st.plotly_chart(fig11, use_container_width=True)
-    elif func_select == 'สถานะ':
-        st.write("n/a")
+        #st.plotly_chart(fig_log, use_container_width=True)
+    elif func_select == 'Ranking':
+        summarize_top_bottom_overall(df_combined,title)
         
     elif func_select == 'เปรียบเทียบทุกเดือน':
         """
