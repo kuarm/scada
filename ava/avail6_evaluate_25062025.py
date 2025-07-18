@@ -4,6 +4,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 from io import BytesIO
 
+# --- ตัวเลือกเดือน (Filter) ---
+month_names_th = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
 def plot_avg(df,flag):
     # --- เตรียมข้อมูล ---
     df_avg = df.copy()
@@ -19,9 +23,6 @@ def plot_avg(df,flag):
     # ลบค่าที่ไม่สมบูรณ์
     df_avg = df_avg.dropna(subset=["Availability (%)", "Device", "Month_str"])
 
-    # --- ตัวเลือกเดือน (Filter) ---
-    month_names_th = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-                  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 
     df_avg["ปี"] = pd.to_datetime(df_avg["Month_str"], format="%Y-%m", errors="coerce").dt.year
     #df_avg["เดือน"] = pd.to_datetime(df_avg["Month_str"], format="%Y-%m", errors="coerce").dt.month
@@ -223,10 +224,22 @@ def evaluate(df,bins,labels,flag):
     #เพิ่ม Month
     df["Month"] = pd.to_datetime(df["Availability Period"], format="%Y-%m", errors="coerce")
     df["Month_str"] = df["Month"].dt.strftime("%Y-%m")
-    #df["Availability (%)"] = df["Availability (%)"] * 100
+    df["Availability (%)"] = df["Availability (%)"] * 100
     df["ปี"] = pd.to_datetime(df["Month_str"], format="%Y-%m", errors="coerce").dt.year
     years = sorted(df["ปี"].unique())
     year_str = ", ".join(str(y) for y in years)
+    # หาค่าเดือนแรก และเดือนสุดท้าย
+    min_month = df["Month"].min()
+    max_month = df["Month"].max()
+    # แสดงชื่อเดือนแบบไทย
+    thai_start = f"{month_names_th[min_month.month - 1]} {min_month.year}"
+    thai_end = f"{month_names_th[max_month.month - 1]} {max_month.year}"
+
+    thai_start_month = month_names_th[min_month.month - 1]
+    thai_end_month = month_names_th[max_month.month - 1]
+
+    # แสดงผล
+    st.success(f"📆 เดือนแรก: {thai_start} | เดือนสุดท้าย: {thai_end}")
 
     all_month_summaries = []  # 🔹 รวมไว้ทีหลัง
 
@@ -286,7 +299,7 @@ def evaluate(df,bins,labels,flag):
     # ✅ แปลง "Avg Availability (%)" ให้มี 3 ตำแหน่ง และเพิ่ม "%"
     final_month_summary["Avg.Availability (%)"] = final_month_summary["Avg.Availability (%)"].map(lambda x: f"{x:.3f} %")
     ### ✅ แสดงรวมในตารางเดียว
-    st.info(f"📊 ประเมินผลค่า Availability (%) เฉลี่ยรายเดือนในปี {year_str} ของ {flag} (แยกตามผู้ดูแล)")
+    st.info(f"📊 ประเมินผลค่า Availability (%) รวมเฉลี่ย {thai_start_month} - {thai_end_month} {max_month.year} ของ{flag} (แยกตามผู้ดูแล)")
     
     # ✅ แสดงผลโดยซ่อน index ด้านซ้าย
     st.dataframe(final_month_summary, use_container_width=True, hide_index=True)
@@ -303,10 +316,9 @@ def evaluate(df,bins,labels,flag):
     #สรุปจำนวนเดือนทั้งหมด (ไม่แสดงในตาราง device_avg)
     total_months = df_group["Month"].nunique()
 
-    ### ✅
-    st.info(f"📊 ประเมินผลค่า Availability (%) เฉลี่ยรายอุปกรณ์ในปี {year_str} {total_months} เดือน แยกตาม{flag}")
+    ### ✅✅✅
+    st.info(f"📊 ประเมินผลค่า Availability (%) แต่ละ {flag} เฉลี่ย {total_months} เดือน ({thai_start_month} - {thai_end_month} {max_month.year})")
     st.dataframe(device_avg)
-    st.info(f"📊 ประเมินผลค่า Availability (%) เฉลี่ยรายอุปกรณ์ในปี {year_str} ของ {flag} (แยกตามผู้ดูแล)")
     
     # สรุปรวมทั้งหมด
     overall_avg = df["Availability (%)"].mean()
