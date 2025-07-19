@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
 from io import BytesIO
 
 # --- ตัวเลือกเดือน (Filter) ---
@@ -197,7 +198,9 @@ def df_addColMonth(df):
     month_names = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
                 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
     df["Month_name"] = df["Month_num"].apply(lambda x: month_names[x - 1] if pd.notnull(x) else "")
-
+    df["Availability (%)"] = pd.to_numeric(df["Availability (%)"], errors="coerce")
+    df["Availability (%)"] = df["Availability (%)"] * 100
+    #df["Availability (%)"] = df["Availability (%)"].map(lambda x: f"{x:.2f} %")
     # Pivot table: row = Device, column = Month_name, values = Availability (%)
     pivot_df = df.pivot_table(
         index="Device",
@@ -210,14 +213,39 @@ def df_addColMonth(df):
     pivot_df = pivot_df.reindex(columns=month_names)
 
     # เพิ่มคอลัมน์ค่าเฉลี่ยของแต่ละ Device
-    pivot_df["Avg Availability (%)"] = pivot_df.mean(axis=1)
+    pivot_df["Avg.Availability (%)"] = pivot_df.mean(axis=1)
 
     # Reset index เพื่อให้ Device เป็นคอลัมน์
     pivot_df = pivot_df.reset_index()
 
-    # จัดรูปแบบตัวเลขให้สวยงาม
-    pivot_df = pivot_df.round(2)
+    pivot_df.rename(columns={"Device": flag}, inplace=True)
+
+    # จัดรูปแบบตัวเลข: แสดงเป็นทศนิยม 2 ตำแหน่ง และใส่ % เฉพาะคอลัมน์ที่เป็นเดือน + ค่าเฉลี่ย
+    value_cols = month_names + ["Avg.Availability (%)"]
+    pivot_df[value_cols] = pivot_df[value_cols].applymap(
+        lambda x: f"{x:.2f} %" if pd.notnull(x) else "-"
+    )
+    ### ✅✅✅
+    st.info(f"📊 สรุป Availability (%) รายเดือนของ {flag}")
+    st.dataframe(pivot_df)
     
+    # --- แปลงเป็น Excel สำหรับดาวน์โหลด ---
+    def to_excel(df):
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="Availability (%)_month")
+        processed_data = output.getvalue()
+        return processed_data
+
+    excel_file = to_excel(pivot_df)
+    # --- ปุ่มดาวน์โหลดใน Streamlit ---
+    st.download_button(
+        label="📥 ดาวน์โหลด Availability (%)_month",
+        data=excel_file,
+        file_name="Availability (%)_month.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
     return pivot_df
 
 def evaluate(df,bins,labels,flag):
@@ -242,6 +270,7 @@ def evaluate(df,bins,labels,flag):
     st.success(f"📆 เดือนแรก: {thai_start} | เดือนสุดท้าย: {thai_end}")
 
     all_month_summaries = []  # 🔹 รวมไว้ทีหลัง
+    all_device_summaries = []
 
     # กำหนดเงื่อนไขสำหรับผลการประเมิน
     def evaluate_result(row):
@@ -255,7 +284,7 @@ def evaluate(df,bins,labels,flag):
     # 🔹 ฟังก์ชันประเมินผลในแต่ละกลุ่ม (PEA หรือ Producer)
     def evaluate_group(df_group, owner_label):
         # เพิ่มคอลัมน์ "เกณฑ์การประเมิน"
-        df_group["เกณฑ์การประเมิน"] = pd.cut(df["Availability (%)"], bins=bins, labels=labels, right=True)
+        df_group["เกณฑ์การประเมิน"] = pd.cut(df_group["Availability (%)"], bins=bins, labels=labels, right=True)
         #df_pea = df[df["ผู้ดูแล"] == "PEA ดูแล"] #df_Producer = df[df["ผู้ดูแล"] == "Producer ดูแล"]
 
         # เพิ่มคอลัมน์ "ผลการประเมิน"
@@ -271,23 +300,37 @@ def evaluate(df,bins,labels,flag):
         #    lambda x: "✅" if x == "90 < Availability (%) <= 100" else ("⚠️" if x == "80 < Availability (%) <= 90" else "❌")
         #)
 
+        # ✅ รายอุปกรณ์เฉลี่ย
+        # คำนวณค่าเฉลี่ยของ Availability (%) แยกตาม Device โดยเฉลี่ยจากหลายเดือน
+        device_avg = df_group.groupby("Device")["Availability (%)"].mean().reset_index()
+        #device_avg.columns = ["Device", "Avg. Availability (%)"]
+        device_avg["เกณฑ์การประเมิน"] = pd.cut(device_avg["Availability (%)"], bins=bins, labels=labels)
+        device_avg["ผลการประเมิน"] = device_avg["เกณฑ์การประเมิน"].apply(evaluate_result)
+        device_avg["ผู้ดูแล"] = owner_label  # 🔹 เพิ่มคอลัมน์ระบุเจ้าของ
+
         month_summary_re = month_summary.rename(columns={
                 "Month_str": "ปี-เดือน",
                 "จำนวน Device": "จำนวน",
                 "Availability (%)": "Avg.Availability (%)"
             })
         
-        return month_summary_re
+        device_avg_re = device_avg.rename(columns={
+                "Availability (%)": "Avg.Availability (%)",
+                "Device": flag
+            })
+        return month_summary_re, device_avg_re
          
     # 🔸 เรียกประเมินแต่ละกลุ่ม
     for owner_label in ["PEA ดูแล", "Producer ดูแล"]:
         df_group = df[df["ผู้ดูแล"] == owner_label].copy()
         if not df_group.empty:
-            summary = evaluate_group(df_group, owner_label)
+            summary, summary_device = evaluate_group(df_group, owner_label)
             all_month_summaries.append(summary)
+            all_device_summaries.append(summary_device)
 
     # ✅ รวมผลลัพธ์ทุกกลุ่ม
     final_month_summary = pd.concat(all_month_summaries, ignore_index=True)
+    final_device_summary = pd.concat(all_device_summaries, ignore_index=True)
     # แปลงปี-เดือนกลับเป็น datetime เพื่อง่ายต่อการ sort
     final_month_summary["ปี-เดือน-dt"] = pd.to_datetime(final_month_summary["ปี-เดือน"], format="%Y-%m", errors="coerce")
     # เรียงตามเวลา
@@ -298,6 +341,7 @@ def evaluate(df,bins,labels,flag):
     final_month_summary = final_month_summary.drop(columns=["ปี-เดือน-dt"])
     # ✅ แปลง "Avg Availability (%)" ให้มี 3 ตำแหน่ง และเพิ่ม "%"
     final_month_summary["Avg.Availability (%)"] = final_month_summary["Avg.Availability (%)"].map(lambda x: f"{x:.3f} %")
+    final_device_summary["Avg.Availability (%)"] = final_device_summary["Avg.Availability (%)"].map(lambda x: f"{x:.3f} %")
     ### ✅ แสดงรวมในตารางเดียว
     st.info(f"📊 ประเมินผลค่า Availability (%) รวมเฉลี่ย {thai_start_month} - {thai_end_month} {max_month.year} ของ{flag} (แยกตามผู้ดูแล)")
     
@@ -306,27 +350,55 @@ def evaluate(df,bins,labels,flag):
     
     #fig_bar1 = px.bar(final_month_summary, x="ปี-เดือน", y="Avg.Availability (%)", color="ผู้ดูแล", barmode="group")
     #st.plotly_chart(fig_bar1, use_container_width=True)
-
-    # ✅ รายอุปกรณ์เฉลี่ย
-    # คำนวณค่าเฉลี่ยของ Availability (%) แยกตาม Device โดยเฉลี่ยจากหลายเดือน
-    device_avg = df_group.groupby("Device")["Availability (%)"].mean().reset_index()
-    device_avg.columns = ["Device", "Avg. Availability (%)"]
-    device_avg["เกณฑ์การประเมิน"] = pd.cut(device_avg["Avg. Availability (%)"], bins=bins, labels=labels)
-    device_avg["ผลการประเมิน"] = device_avg["เกณฑ์การประเมิน"].apply(evaluate_result)
+    
+    
     #สรุปจำนวนเดือนทั้งหมด (ไม่แสดงในตาราง device_avg)
     total_months = df_group["Month"].nunique()
 
+    
+    #device_avg1 = df.groupby("Device")["Availability (%)"].mean().reset_index()
+    #device_avg1["Availability (%)"] = device_avg1["Availability (%)"].round(2)
+    #device_avg1 = device_avg1.sort_values("Availability (%)", ascending=False)
+    #t.dataframe(device_avg1)
+
     ### ✅✅✅
     st.info(f"📊 ประเมินผลค่า Availability (%) แต่ละ {flag} เฉลี่ย {total_months} เดือน ({thai_start_month} - {thai_end_month} {max_month.year})")
-    st.dataframe(device_avg)
+    st.dataframe(final_device_summary)
     
+    # --- แปลงเป็น Excel สำหรับดาวน์โหลด ---
+    def to_excel(df):
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="ประเมินผลค่า Ava")
+        processed_data = output.getvalue()
+        return processed_data
+
+    excel_file1 = to_excel(final_month_summary)
+    excel_file2 = to_excel(final_device_summary)
+
+    # --- ปุ่มดาวน์โหลดใน Streamlit ---
+    st.download_button(
+        label="📥 ดาวน์โหลด evaluate_month_avg",
+        data=excel_file1,
+        file_name="evaluate_month_avg.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    st.download_button(
+        label="📥 ดาวน์โหลด evaluate_device_avg",
+        data=excel_file2,
+        file_name="evaluate_device_avg.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    #----------------------------------------------------#
     # สรุปรวมทั้งหมด
     overall_avg = df["Availability (%)"].mean()
+    overall_label = pd.cut([overall_avg], bins=bins, labels=labels)[0]
     total_row = pd.DataFrame({
         "Month_str": ["รวมทั้งหมด"],
         "Availability (%)": [overall_avg],
         "เกณฑ์การประเมิน": [pd.cut([overall_avg], bins=bins, labels=labels)[0]],
-        "ผลการประเมิน": [evaluate_result({"เกณฑ์การประเมิน": pd.cut([overall_avg], bins=bins, labels=labels)[0]})],
+        "ผลการประเมิน": [evaluate_result(overall_label)],
         "จำนวน Device": [df["Device"].nunique()]
     })
     #summary_df = pd.concat([final_month_summary, total_row], ignore_index=True)
@@ -349,7 +421,7 @@ def evaluate(df,bins,labels,flag):
         # แสดงผล
         st.success(f"🎯 ค่าเฉลี่ยของค่าเฉลี่ยรายเดือนสำหรับ {owner}: **{avg_of_monthly_avg:.3f}%** {eval_symbol}")
 
-    return final_month_summary, device_avg
+    return final_month_summary, final_device_summary
 
     
     
@@ -1236,11 +1308,10 @@ if uploaded_files:
         all_data.append(df)
 
     df_combined = pd.concat(all_data, ignore_index=True)
-    option_func = ['Ranking', 'ประเมินผล', 'Histogram', 'เปรียบเทียบทุกเดือน']
+    option_func = ['ค่า Ava', 'Ranking', 'ประเมินผล', 'Histogram', 'เปรียบเทียบทุกเดือน']
     option_submenu = ['ระบบจำหน่ายสายส่ง','สถานีไฟฟ้า']
     flag = st.selectbox("🔍 เลือกระดับการวิเคราะห์", ["อุปกรณ์ FRTU", "สถานีไฟฟ้า"])
     title = flag  # เก็บไว้ใช้ในชื่อกราฟ
-    
     
     #owner = st.selectbox("🔍 เลือกผู้ดูแล", ["PEA ดูแล", "Producer ดูแล"])
     # เปลี่ยนชื่อคอลัมน์ Device ตาม flag
@@ -1250,8 +1321,13 @@ if uploaded_files:
 
     
 
-    func_select = st.sidebar.radio(label="function: ", options = option_func)   
-    if func_select == 'ประเมินผล':
+    func_select = st.sidebar.radio(label="function: ", options = option_func)  
+    if  func_select == 'ค่า Ava':
+        # ✅ Pivot แสดง Availability รายเดือนทุกอุปกรณ์
+        pivot_df = df_addColMonth(df_combined)
+ 
+
+    elif func_select == 'ประเมินผล':
         bins_eva = [0, 80, 90, 100]
         labels_eva = ["0 <= Availability (%) <= 80", "80 < Availability (%) <= 90", "90 < Availability (%) <= 100"]
         cols = "จำนวน " + title
@@ -1259,11 +1335,7 @@ if uploaded_files:
 
         monthly_avg, device_avg = evaluate(df_evaluate,bins_eva,labels_eva,title)
 
-        # ✅ Pivot แสดง Availability รายเดือนทุกอุปกรณ์
-        pivot_df = df_addColMonth(df)
-        pivot_df.rename(columns={"Device": flag}, inplace=True)
-        st.info(f"✅ สรุป Availability (%) รายเดือนของ {flag}")
-        st.write(pivot_df)
+        
         #st.plotly_chart(fig1)#st.plotly_chart(fig2)#st.dataframe(show_df)
         #show_df.rename(columns={"Device+Percent": cols}, inplace=True)
         #st.markdown("### 🔹 ผลการประเมิน Availability (%) ของอุปกรณ์ในสถานีไฟฟ้า")#st.dataframe(show_df)
@@ -1322,7 +1394,7 @@ if uploaded_files:
         bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         labels = [f"{bins[i]}-{bins[i+1]} %" for i in range(len(bins)-1)]
         #df_histogram["Availability (%)"] = df_histogram["Availability (%)"] * 100
-        #df_avg_device["Availability (%)"] = df_avg_device["Availability (%)"] * 100
+        df_avg_device["Availability (%)"] = df_avg_device["Availability (%)"] * 100
         df_histogram["Availability Group"] = pd.cut(df_histogram["Availability (%)"], bins=bins, labels=labels, right=True)
         df_avg_device["Availability Group"] = pd.cut(df_avg_device["Availability (%)"], bins=bins, labels=labels, right=True)
 
@@ -1387,6 +1459,7 @@ if uploaded_files:
         fig.update_traces(texttemplate="%{text:,}", textposition="outside")
         #st.plotly_chart(fig, use_container_width=True)
 
+        ###✅✅✅ Bar_avg ✅✅✅
         fig_bar_avg = px.bar(
             grouped_counts_avg,
             x="Availability Group",
@@ -1411,6 +1484,22 @@ if uploaded_files:
         fig_bar_avg.update_traces(texttemplate="%{text:,}", textposition="outside")
 
         st.plotly_chart(fig_bar_avg, use_container_width=True)
+        def download_plotly_figure(fig, filename="chart.png"):
+            buffer = BytesIO()
+            # บันทึกเป็น PNG (หรือ pdf, svg ก็ได้)
+            pio.write_image(fig, buffer, format="png", scale=2)  # scale ปรับความละเอียด
+            return buffer.getvalue()
+        
+        # --- ดาวน์โหลด fig_bar_avg ---
+        png_data = download_plotly_figure(fig_bar_avg, filename="histogram_bar_avg.png")
+
+        st.download_button(
+            label="📥 ดาวน์โหลดกราฟ Histogram เฉลี่ย (PNG)",
+            data=png_data,
+            file_name="histogram_bar_avg.png",
+            mime="image/png"
+        )
+        #-----------------------------------------------------------
 
         typeplot = "Line"
         #plot(df_combined,typeplot)
